@@ -7,6 +7,7 @@ import '../../../core/auth/jwt_utils.dart';
 import '../../../core/storage/session_storage.dart';
 import '../data/auth_api.dart';
 import '../../home/presentation/role_home_screen.dart';
+import '../../chat/presentation/student_chat_shell.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key, this.onLoggedIn});
@@ -50,7 +51,6 @@ class _LoginScreenState extends State<LoginScreen> {
         identifier: identifier,
         password: password,
       );
-      await _sessionStorage.saveSession(response);
 
       final payload = decodeJwtPayload(response.token);
       if (payload == null) {
@@ -58,18 +58,21 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      final session = StoredSession(
-        token: response.token,
-        payload: payload,
-        user: response.user,
-      );
+      if (isWebOnlyRole(payload.role)) {
+        setState(() => _apiError = LoginValidator.mapApiError('This account uses the web portal only'));
+        return;
+      }
 
       if (!isMobileAppRole(payload.role)) {
         if (!mounted) return;
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder: (_) => RoleHomeScreen(
-              session: session,
+              session: StoredSession(
+                token: response.token,
+                payload: payload,
+                user: response.user,
+              ),
               unsupported: true,
             ),
           ),
@@ -77,8 +80,23 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
+      await _sessionStorage.saveSession(response);
+
+      final session = StoredSession(
+        token: response.token,
+        payload: payload,
+        user: response.user,
+      );
+
       widget.onLoggedIn?.call(session);
       if (!mounted) return;
+      if (payload.role == 'student') {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => StudentChatShell(session: session)),
+        );
+        return;
+      }
+
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => RoleHomeScreen(session: session)),
       );

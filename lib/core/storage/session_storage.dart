@@ -9,6 +9,7 @@ const _kToken = 'mcs_auth_token';
 const _kUser = 'mcs_auth_user';
 const _kPush = 'mcs_push_crypto';
 const _kBranchId = 'mcs_active_branch_id';
+const _kAcademicYearId = 'mcs_academic_year_id';
 
 class SessionStorage {
   SessionStorage({FlutterSecureStorage? storage})
@@ -32,6 +33,10 @@ class SessionStorage {
 
   Future<String?> getActiveBranchId() => _storage.read(key: _kBranchId);
 
+  Future<void> saveAcademicYearId(String id) => _storage.write(key: _kAcademicYearId, value: id);
+
+  Future<String?> getAcademicYearId() => _storage.read(key: _kAcademicYearId);
+
   Future<StoredSession?> readSession() async {
     final token = await getToken();
     if (token == null || token.isEmpty) return null;
@@ -53,6 +58,7 @@ class SessionStorage {
     await _storage.delete(key: _kUser);
     await _storage.delete(key: _kPush);
     await _storage.delete(key: _kBranchId);
+    await _storage.delete(key: _kAcademicYearId);
   }
 }
 

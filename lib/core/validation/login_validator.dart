@@ -54,6 +54,9 @@ class LoginValidator {
     if (lower.contains('not active')) {
       return 'This account is inactive. Contact school admin.';
     }
+    if (lower.contains('web portal only')) {
+      return 'This account uses the web admin portal only.';
+    }
     return message;
   }
 }

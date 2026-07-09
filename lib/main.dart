@@ -4,6 +4,7 @@ import 'config/app_config.dart';
 import 'core/theme/app_theme.dart';
 import 'core/storage/session_storage.dart';
 import 'core/auth/jwt_utils.dart';
+import 'features/chat/presentation/student_chat_shell.dart';
 import 'features/auth/presentation/login_screen.dart';
 import 'features/home/presentation/role_home_screen.dart';
 
@@ -63,8 +64,11 @@ class _AuthGateState extends State<AuthGate> {
 
     if (_session != null) {
       final role = _session!.payload.role;
-      if (!isMobileAppRole(role)) {
+      if (isWebOnlyRole(role) || !isMobileAppRole(role)) {
         return RoleHomeScreen(session: _session!, unsupported: true);
+      }
+      if (role == 'student') {
+        return StudentChatShell(session: _session!);
       }
       return RoleHomeScreen(session: _session!);
     }

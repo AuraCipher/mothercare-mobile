@@ -58,3 +58,8 @@ String landingRouteForRole(String role) {
 bool isMobileAppRole(String role) {
   return role == 'student' || role == 'teacher' || role == 'parent';
 }
+
+/// CEO / web-only staff — must use the admin web portal, not the mobile app.
+bool isWebOnlyRole(String role) {
+  return role == 'super_admin';
+}
