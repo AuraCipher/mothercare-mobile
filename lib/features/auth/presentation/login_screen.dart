@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../../testing/e2e_keys.dart';
-import '../../../config/app_config.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_logo.dart';
 import '../../../core/validation/login_validator.dart';
@@ -146,16 +145,16 @@ class _LoginScreenState extends State<LoginScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const SizedBox(height: 24),
-                    const AppLogo(size: 72, borderRadius: 18),
-                    const SizedBox(height: 20),
-                    Text(
-                      AppConfig.appName,
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary,
-                          ),
+                    Center(
+                      child: AppLogo(
+                        size: 112,
+                        borderRadius: 0,
+                        showBackground: false,
+                        asset: AppAssets.bglessLogo,
+                        fit: BoxFit.contain,
+                      ),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 24),
                     Text(
                       'Sign in with your school credentials',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
