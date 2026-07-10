@@ -190,6 +190,6 @@ void main() {
     expect(data.communities.length, 1);
     expect(data.communities.first.groupLabel, 'Playgroup — A');
     expect(data.contacts.first.roleLabel, 'Principal');
-    expect(data.sections.where((s) => s.key == 'classes').first.communities?.length, 1);
+    expect(data.sections.where((s) => s.key == 'classes').first.communities.length, 1);
   });
 }

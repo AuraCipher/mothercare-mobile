@@ -68,7 +68,7 @@ class ChatSocketService {
       'roomId': roomId,
       'type': type,
       if (content != null && content.isNotEmpty) 'content': content,
-      if (mediaFileId != null) 'mediaFileId': mediaFileId,
+      'mediaFileId': ?mediaFileId,
     });
   }
 

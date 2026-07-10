@@ -22,7 +22,7 @@ class UploadApi {
       'entityType': 'chat',
       'roomId': roomId,
       'academicYearId': academicYearId,
-      if (durationSeconds != null) 'durationSeconds': durationSeconds,
+      'durationSeconds': ?durationSeconds,
     };
     final body = await _client.uploadMultipart(
       '/api/upload',
