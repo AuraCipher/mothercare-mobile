@@ -43,6 +43,8 @@ class SessionStorage {
 
   Future<String?> getActiveBranchId() => _storage.read(key: _kBranchId);
 
+  Future<void> saveActiveBranchId(String id) => _storage.write(key: _kBranchId, value: id);
+
   Future<void> saveAcademicYearId(String id) => _storage.write(key: _kAcademicYearId, value: id);
 
   Future<String?> getAcademicYearId() => _storage.read(key: _kAcademicYearId);

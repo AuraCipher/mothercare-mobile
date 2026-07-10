@@ -15,8 +15,8 @@ class StaffApi {
     required String userName,
     required String role,
   }) async {
-    final ay = await _portal.fetchAcademicYear(token: token);
     final branch = await _portal.fetchPrimaryBranch(token: token);
+    final ay = await _portal.fetchAcademicYear(token: token, branchId: branch.id);
     await _storage.saveAcademicYearId(ay.id);
     return StaffBootstrap(
       academicYearId: ay.id,

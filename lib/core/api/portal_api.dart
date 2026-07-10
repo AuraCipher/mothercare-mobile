@@ -10,26 +10,40 @@ class PortalApi {
   final AuthenticatedClient _client;
   final SessionStorage _storage;
 
-  Future<String> resolveAcademicYearId({required String token}) async {
+  Future<String> resolveAcademicYearId({
+    required String token,
+    String? branchId,
+  }) async {
     final stored = await _storage.getAcademicYearId();
     if (stored != null && stored.isNotEmpty) return stored;
 
-    final body = await _client.getJson('/me/academic-year', token: token);
-    final data = body['data'] as Map<String, dynamic>? ?? {};
-    final ay = AcademicYearRef.fromJson(data);
+    final ay = await fetchAcademicYear(token: token, branchId: branchId);
     if (ay.id.isEmpty) {
       throw Exception('No active academic year');
     }
-    await _storage.saveAcademicYearId(ay.id);
     return ay.id;
   }
 
-  Future<AcademicYearRef> fetchAcademicYear({required String token}) async {
-    final body = await _client.getJson('/me/academic-year', token: token);
+  Future<AcademicYearRef> fetchAcademicYear({
+    required String token,
+    String? branchId,
+  }) async {
+    final query = <String, String>{};
+    if (branchId != null && branchId.isNotEmpty) {
+      query['branchId'] = branchId;
+    }
+    final body = await _client.getJson(
+      '/me/academic-year',
+      token: token,
+      query: query.isEmpty ? null : query,
+    );
     final data = body['data'] as Map<String, dynamic>? ?? {};
     final ay = AcademicYearRef.fromJson(data);
     if (ay.id.isNotEmpty) {
       await _storage.saveAcademicYearId(ay.id);
+    }
+    if (ay.branchId != null && ay.branchId!.isNotEmpty) {
+      await _storage.saveActiveBranchId(ay.branchId!);
     }
     return ay;
   }

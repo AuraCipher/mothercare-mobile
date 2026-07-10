@@ -1,14 +1,21 @@
 class AcademicYearRef {
-  const AcademicYearRef({required this.id, required this.label});
+  const AcademicYearRef({
+    required this.id,
+    required this.label,
+    this.branchId,
+  });
 
   final String id;
   final String label;
+  final String? branchId;
 
   factory AcademicYearRef.fromJson(Map<String, dynamic> json) {
     final calendar = json['calendar'] as Map<String, dynamic>? ?? {};
+    final branch = json['branch'] as Map<String, dynamic>? ?? {};
     return AcademicYearRef(
       id: json['id'] as String? ?? '',
       label: calendar['label'] as String? ?? json['label'] as String? ?? '',
+      branchId: json['branchId'] as String? ?? branch['id'] as String?,
     );
   }
 }

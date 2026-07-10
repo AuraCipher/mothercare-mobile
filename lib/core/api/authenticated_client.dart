@@ -44,8 +44,9 @@ class AuthenticatedClient {
     String path, {
     required String token,
     Map<String, dynamic>? body,
+    Map<String, String>? query,
   }) async {
-    final uri = Uri.parse('$_baseUrl$path');
+    final uri = Uri.parse('$_baseUrl$path').replace(queryParameters: query);
     try {
       final res = await _client
           .post(

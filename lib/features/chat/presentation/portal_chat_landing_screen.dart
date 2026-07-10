@@ -89,7 +89,11 @@ class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
           academicYearId: widget.academicYearId,
         );
       } else {
-        landing = await _chatApi.fetchTeacherLanding(token: widget.session.token);
+        landing = await _chatApi.fetchTeacherLanding(
+          token: widget.session.token,
+          branchId: widget.branchId!,
+          academicYearId: widget.academicYearId,
+        );
       }
       await _sessionStorage.saveChatLandingCache(
         landing,
@@ -189,6 +193,8 @@ class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
       } else {
         room = await _chatApi.openTeacherDirectMessage(
           token: widget.session.token,
+          branchId: widget.branchId!,
+          academicYearId: widget.academicYearId,
           participantUserId: contact.userId,
           contactName: contact.name,
         );

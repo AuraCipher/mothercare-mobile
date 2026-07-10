@@ -11,8 +11,11 @@ class TeacherApi {
   final PortalApi _portal;
 
   Future<TeacherBootstrap> fetchBootstrap({required String token}) async {
-    final academicYearId = await _portal.resolveAcademicYearId(token: token);
     final branch = await _portal.fetchPrimaryBranch(token: token);
+    final academicYearId = await _portal.resolveAcademicYearId(
+      token: token,
+      branchId: branch.id,
+    );
     final body = await _client.getJson(
       '/teacher/bootstrap',
       token: token,

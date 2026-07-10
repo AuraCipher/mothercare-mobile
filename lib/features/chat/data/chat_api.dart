@@ -12,20 +12,37 @@ class ChatApi {
     return ChatLandingData.fromJson(data);
   }
 
-  Future<ChatLandingData> fetchTeacherLanding({required String token}) async {
-    final body = await _client.getJson('/teacher/chat/landing', token: token);
+  Future<ChatLandingData> fetchTeacherLanding({
+    required String token,
+    required String branchId,
+    required String academicYearId,
+  }) async {
+    final body = await _client.getJson(
+      '/teacher/chat/landing',
+      token: token,
+      query: {
+        'branchId': branchId,
+        'academicYearId': academicYearId,
+      },
+    );
     final data = body['data'] as Map<String, dynamic>? ?? {};
     return ChatLandingData.fromJson(data);
   }
 
   Future<ChatRoomSummary> openTeacherDirectMessage({
     required String token,
+    required String branchId,
+    required String academicYearId,
     required String participantUserId,
     required String contactName,
   }) async {
     final body = await _client.postJson(
       '/teacher/chat/dm',
       token: token,
+      query: {
+        'branchId': branchId,
+        'academicYearId': academicYearId,
+      },
       body: {'participantUserId': participantUserId},
     );
     final data = body['data'] as Map<String, dynamic>? ?? {};
