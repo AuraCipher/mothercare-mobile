@@ -144,17 +144,27 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 8),
                     Center(
                       child: AppLogo(
-                        size: 112,
+                        size: 140,
                         borderRadius: 0,
                         showBackground: false,
                         asset: AppAssets.bglessLogo,
                         fit: BoxFit.contain,
                       ),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Mother Care School',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: Colors.black,
+                            letterSpacing: -0.2,
+                          ),
+                    ),
+                    const SizedBox(height: 8),
                     Text(
                       'Sign in with your school credentials',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(

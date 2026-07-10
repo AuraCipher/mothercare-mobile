@@ -70,7 +70,7 @@ class _AuthGateState extends State<AuthGate> {
             mainAxisSize: MainAxisSize.min,
             children: [
               AppLogo(
-                size: 112,
+                size: 140,
                 borderRadius: 0,
                 showBackground: false,
                 asset: AppAssets.bglessLogo,

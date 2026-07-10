@@ -20,6 +20,7 @@ void main() {
       );
 
       expect(find.text('Sign In'), findsOneWidget);
+      expect(find.text('Mother Care School'), findsOneWidget);
       expect(find.text('Sign in with your school credentials'), findsOneWidget);
 
       await tester.tap(find.byKey(E2eKeys.loginSubmit));
