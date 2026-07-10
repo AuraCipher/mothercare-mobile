@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/api/api_exception.dart';
 import '../../../core/storage/session_storage.dart';
@@ -6,30 +7,25 @@ import '../../../core/theme/app_theme.dart';
 import '../data/chat_api.dart';
 import '../data/chat_socket_service.dart';
 import '../models/chat_models.dart';
-import '../utils/chat_landing_layout.dart';
-import '../widgets/contact_chat_tile.dart';
-import '../widgets/landing_section_tile.dart';
-import '../widgets/student_landing_header.dart';
+import '../widgets/chat_room_tile.dart';
+import '../widgets/landing_header.dart';
 import 'chat_room_screen.dart';
-import 'class_community_screen.dart';
 
-/// Student chats landing — wireframe order:
-/// header → school announcement → class group → contacts.
 class StudentChatLandingScreen extends StatefulWidget {
   const StudentChatLandingScreen({
     super.key,
     required this.session,
     required this.socket,
+    required this.academicYearId,
     this.groupLabel,
-    this.onMenu,
-    this.onOpenCommunities,
+    this.onLogout,
   });
 
   final StoredSession session;
   final ChatSocketService socket;
+  final String academicYearId;
   final String? groupLabel;
-  final VoidCallback? onMenu;
-  final VoidCallback? onOpenCommunities;
+  final VoidCallback? onLogout;
 
   @override
   State<StudentChatLandingScreen> createState() => _StudentChatLandingScreenState();
@@ -87,22 +83,44 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
     ).then((_) => _load());
   }
 
-  void _openClassCommunity(ChatLandingLayout layout) {
-    if (widget.onOpenCommunities != null) {
-      widget.onOpenCommunities!();
-      return;
-    }
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ClassCommunityScreen(
-          session: widget.session,
-          socket: widget.socket,
-          rooms: layout.classCommunityRooms,
-          groupLabel: widget.groupLabel,
-          onMenu: widget.onMenu,
+  void _showMenu() {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (widget.groupLabel != null)
+              ListTile(
+                leading: const Icon(Icons.school_outlined),
+                title: Text(widget.groupLabel!),
+                subtitle: const Text('Your class'),
+              ),
+            ListTile(
+              leading: const Icon(Icons.logout_rounded),
+              title: const Text('Logout'),
+              onTap: () {
+                Navigator.pop(ctx);
+                widget.onLogout?.call();
+              },
+            ),
+          ],
         ),
       ),
-    ).then((_) => _load());
+    );
+  }
+
+  List<ChatLandingSection> get _visibleSections {
+    final sections = _landing?.sections ?? [];
+    return sections.where((s) => s.key != 'school').toList();
+  }
+
+  ChatRoomSummary? get _announcementRoom {
+    final rooms = _landing?.rooms ?? [];
+    for (final room in rooms) {
+      if (room.kind == 'school_announcement') return room;
+    }
+    return null;
   }
 
   @override
@@ -110,13 +128,9 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        StudentLandingHeader(
-          onSearch: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Search coming soon')),
-            );
-          },
-          onMenu: widget.onMenu,
+        LandingHeader(
+          onSearch: () {},
+          onMenu: _showMenu,
         ),
         Expanded(child: _buildBody()),
       ],
@@ -144,55 +158,121 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
       );
     }
 
-    final layout = ChatLandingLayout(_landing!);
-    final school = layout.schoolAnnouncement;
-    final classEntry = layout.classGroupEntry;
-    final contacts = layout.contactRooms;
+    final announcement = _announcementRoom;
+    final sections = _visibleSections;
+
+    if (announcement == null && sections.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: _load,
+        color: AppColors.violet,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: const [
+            SizedBox(height: 120),
+            Center(child: Text('No chat rooms yet', style: TextStyle(color: AppColors.textMuted))),
+          ],
+        ),
+      );
+    }
 
     return RefreshIndicator(
       onRefresh: _load,
       color: AppColors.violet,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(bottom: 8),
         children: [
-          // school-announcement.png
-          if (school != null)
-            LandingSectionTile(
-              title: 'Announcements',
-              subtitle: previewForRoom(school),
-              leading: const Icon(Icons.campaign_outlined, color: AppColors.violet, size: 24),
-              leadingBackground: AppColors.violet.withValues(alpha: 0.12),
-              onTap: () => _openRoom(school),
-            ),
-          if (school != null) const Divider(height: 1, indent: 16, endIndent: 16),
-
-          // class-community.png
-          if (classEntry != null)
-            LandingSectionTile(
-              title: 'Class Group',
-              subtitle: previewForRoom(classEntry, groupLabel: widget.groupLabel),
-              leading: const Icon(Icons.groups_rounded, color: AppColors.textPrimary, size: 24),
-              leadingBackground: const Color(0xFFF0F0F5),
-              onTap: () => _openClassCommunity(layout),
-            ),
-          if (classEntry != null && contacts.isNotEmpty)
-            const Divider(height: 1, indent: 16, endIndent: 16),
-
-          // other-contacts.png
-          ...contacts.map(
-            (room) => ContactChatTile(
-              room: room,
-              preview: previewForRoom(room),
-              onTap: () => _openRoom(room),
-            ),
-          ),
-
-          if (school == null && classEntry == null && contacts.isEmpty)
-            const Padding(
-              padding: EdgeInsets.only(top: 80),
-              child: Center(child: Text('No chats yet', style: TextStyle(color: AppColors.textMuted))),
-            ),
+          if (announcement != null) _AnnouncementPinnedTile(room: announcement, onTap: () => _openRoom(announcement)),
+          ...sections.expand((section) => [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+                  child: Text(
+                    displaySectionTitle(section),
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textMuted,
+                      letterSpacing: 0.4,
+                    ),
+                  ),
+                ),
+                ...section.rooms.map(
+                  (room) => ChatRoomTile(
+                    room: room,
+                    displayName: displayRoomName(room),
+                    onTap: () => _openRoom(room),
+                  ),
+                ),
+              ]),
         ],
+      ),
+    );
+  }
+}
+
+class _AnnouncementPinnedTile extends StatelessWidget {
+  const _AnnouncementPinnedTile({required this.room, required this.onTap});
+
+  final ChatRoomSummary room;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final timeLabel = room.lastMessageAt != null
+        ? DateFormat('MMM d, h:mm a').format(room.lastMessageAt!.toLocal())
+        : null;
+
+    return Material(
+      color: AppColors.violet.withValues(alpha: 0.06),
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: AppColors.border)),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppColors.violet.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.campaign_outlined, color: AppColors.violet, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Announcement',
+                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: AppColors.textPrimary),
+                    ),
+                    if (timeLabel != null)
+                      Text(timeLabel, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                  ],
+                ),
+              ),
+              if (room.unreadCount > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.violet,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    room.unreadCount > 99 ? '99+' : '${room.unreadCount}',
+                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                )
+              else
+                const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
+            ],
+          ),
+        ),
       ),
     );
   }

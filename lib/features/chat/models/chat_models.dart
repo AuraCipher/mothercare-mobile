@@ -165,7 +165,7 @@ class ChatMessage {
 String iconForRoomKind(String kind) {
   switch (kind) {
     case 'school_announcement':
-      return '🏫';
+      return '📢';
     case 'class_announcement':
       return '📢';
     case 'group_chat':
@@ -179,4 +179,14 @@ String iconForRoomKind(String kind) {
     default:
       return '💬';
   }
+}
+
+String displayRoomName(ChatRoomSummary room) {
+  if (room.kind == 'school_announcement') return 'Announcement';
+  return room.name;
+}
+
+String displaySectionTitle(ChatLandingSection section) {
+  if (section.key == 'school') return 'Announcement';
+  return section.title;
 }

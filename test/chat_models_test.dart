@@ -38,4 +38,15 @@ void main() {
     expect(data.roomById('r1')?.name, 'Whole School');
     expect(iconForRoomKind('group_chat'), '💬');
   });
+
+  test('displayRoomName renames school announcement', () {
+    const room = ChatRoomSummary(
+      id: 'r1',
+      kind: 'school_announcement',
+      name: 'Whole School',
+      canPost: false,
+      unreadCount: 0,
+    );
+    expect(displayRoomName(room), 'Announcement');
+  });
 }
