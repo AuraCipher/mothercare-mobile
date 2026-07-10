@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../config/app_config.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/app_logo.dart';
 import '../../../core/storage/session_storage.dart';
 import '../../auth/presentation/login_screen.dart';
 
@@ -31,20 +32,16 @@ class RoleHomeScreen extends StatelessWidget {
 
     String title;
     String subtitle;
-    IconData icon;
 
     if (unsupported) {
       title = 'Web admin only';
       subtitle = 'Role "$role" uses the web portal at ${AppConfig.apiBaseUrl.replaceAll(RegExp(r'/+$'), '')}';
-      icon = Icons.computer_outlined;
     } else if (role == 'teacher') {
       title = 'Teacher';
       subtitle = 'Chat & class tools — Phase 1 coming next';
-      icon = Icons.menu_book_outlined;
     } else {
       title = 'Student';
       subtitle = 'Chat landing — Phase 1 coming next';
-      icon = Icons.chat_bubble_outline;
     }
 
     return Scaffold(
@@ -78,7 +75,7 @@ class RoleHomeScreen extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Icon(icon, color: AppColors.violet, size: 28),
+                      const AppLogo(size: 40, borderRadius: 10, showBackground: false),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(

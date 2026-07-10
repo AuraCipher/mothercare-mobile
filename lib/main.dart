@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
 
 import 'config/app_config.dart';
 import 'core/theme/app_theme.dart';
+import 'core/widgets/app_logo.dart';
 import 'core/storage/session_storage.dart';
 import 'core/auth/jwt_utils.dart';
 import 'features/chat/presentation/student_chat_shell.dart';
@@ -11,7 +13,8 @@ import 'features/auth/presentation/login_screen.dart';
 import 'features/home/presentation/role_home_screen.dart';
 
 void main() {
-  WidgetsFlutterBinding.ensureInitialized();
+  final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
+  FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
   runApp(const McsApp());
 }
 
@@ -49,6 +52,7 @@ class _AuthGateState extends State<AuthGate> {
 
   Future<void> _restore() async {
     final session = await _sessionStorage.readSession();
+    FlutterNativeSplash.remove();
     if (!mounted) return;
     setState(() {
       _session = session;
@@ -60,7 +64,16 @@ class _AuthGateState extends State<AuthGate> {
   Widget build(BuildContext context) {
     if (_loading) {
       return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppLogo(size: 88, borderRadius: 20),
+              SizedBox(height: 24),
+              CircularProgressIndicator(color: AppColors.violet),
+            ],
+          ),
+        ),
       );
     }
 

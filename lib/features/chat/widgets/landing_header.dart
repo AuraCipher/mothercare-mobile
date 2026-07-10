@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/app_logo.dart';
 
 /// Home chats header — search + menu; [title] comes from backend bootstrap.
 class LandingHeader extends StatelessWidget {
@@ -37,6 +38,8 @@ class LandingHeader extends StatelessWidget {
         ),
         child: Row(
           children: [
+            const AppLogo(size: 32, borderRadius: 8, showBackground: false),
+            const SizedBox(width: 10),
             Expanded(
               child: Text(
                 title,

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../testing/e2e_keys.dart';
 import '../../../config/app_config.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/app_logo.dart';
 import '../../../core/validation/login_validator.dart';
 import '../../../core/auth/jwt_utils.dart';
 import '../../../core/storage/session_storage.dart';
@@ -145,15 +146,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const SizedBox(height: 24),
-                    Container(
-                      width: 56,
-                      height: 56,
-                      decoration: BoxDecoration(
-                        color: AppColors.violet.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: const Icon(Icons.school_rounded, color: AppColors.violet, size: 32),
-                    ),
+                    const AppLogo(size: 72, borderRadius: 18),
                     const SizedBox(height: 20),
                     Text(
                       AppConfig.appName,
