@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/api/api_exception.dart';
+import '../../../core/storage/cache_constants.dart';
 import '../../../core/storage/session_storage.dart';
 import '../../../core/theme/app_theme.dart';
 import '../data/chat_api.dart';
@@ -49,7 +50,10 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
   }
 
   Future<void> _load() async {
-    final cached = await _sessionStorage.readChatLandingCache();
+    final cached = await _sessionStorage.readChatLandingCache(
+      scope: ChatLandingScope.student,
+      userId: widget.session.payload.id,
+    );
     if (cached != null && mounted) {
       setState(() {
         _landing = cached;
@@ -65,7 +69,11 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
 
     try {
       final landing = await _chatApi.fetchStudentLanding(token: widget.session.token);
-      await _sessionStorage.saveChatLandingCache(landing);
+      await _sessionStorage.saveChatLandingCache(
+        landing,
+        scope: ChatLandingScope.student,
+        userId: widget.session.payload.id,
+      );
       if (!mounted) return;
       setState(() {
         _landing = landing;

@@ -262,6 +262,12 @@ class ChatMessageSender {
       role: json['role'] as String? ?? '',
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'role': role,
+      };
 }
 
 class ChatMessageMedia {
@@ -291,6 +297,13 @@ class ChatMessageMedia {
   bool get isImage => mimeType.startsWith('image/');
   bool get isVideo => mimeType.startsWith('video/');
   bool get isAudio => mimeType.startsWith('audio/') || purpose == 'voice_note';
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'mimeType': mimeType,
+        'publicUrl': url,
+        'purpose': purpose,
+      };
 }
 
 class ChatMessage {
@@ -359,6 +372,18 @@ class ChatMessage {
       mediaFile: mediaRaw != null ? ChatMessageMedia.fromJson(mediaRaw) : null,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'roomId': roomId,
+        'type': type,
+        'title': title,
+        'content': content,
+        'sender': sender.toJson(),
+        'createdAt': createdAt.toUtc().toIso8601String(),
+        'isDeleted': isDeleted,
+        if (mediaFile != null) 'mediaFile': mediaFile!.toJson(),
+      };
 }
 
 /// Maps legacy backend labels to current copy.

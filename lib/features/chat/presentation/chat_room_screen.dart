@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:video_player/video_player.dart';
@@ -15,6 +16,9 @@ import '../../../core/theme/app_theme.dart';
 import '../data/chat_api.dart';
 import '../data/chat_socket_service.dart';
 import '../data/upload_api.dart';
+import '../../../core/storage/chat_message_cache_store.dart';
+import '../../../core/storage/pending_outgoing_store.dart';
+import '../../../core/widgets/offline_banner.dart';
 import '../../../core/widgets/universal_header.dart';
 import '../models/chat_models.dart';
 import '../models/pending_outgoing_message.dart';
@@ -47,6 +51,8 @@ class ChatRoomScreen extends StatefulWidget {
 class _ChatRoomScreenState extends State<ChatRoomScreen> {
   final _chatApi = ChatApi();
   final _uploadApi = UploadApi();
+  final _messageCache = ChatMessageCacheStore.instance;
+  final _pendingStore = PendingOutgoingStore.instance;
   final _picker = ImagePicker();
   final _recorder = AudioRecorder();
   final _composer = TextEditingController();
@@ -62,22 +68,26 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   String? _error;
   String? _cursor;
   bool _hasMore = true;
+  bool _messagesOffline = false;
+  late final String _userId;
   StreamSubscription<ChatMessage>? _messageSub;
   StreamSubscription<String>? _errorSub;
 
   @override
   void initState() {
     super.initState();
+    _userId = widget.session.payload.id;
     widget.socket.joinRoom(widget.room.id);
     widget.socket.markRead(roomId: widget.room.id);
     _messageSub = widget.socket.onMessage.listen(_onSocketMessage);
     _errorSub = widget.socket.onError.listen(_onSocketError);
     _scrollController.addListener(_onScroll);
-    _loadMessages();
+    _hydrateFromCache().then((_) => _loadMessages());
   }
 
   @override
   void dispose() {
+    _persistPending();
     _messageSub?.cancel();
     _errorSub?.cancel();
     _recorder.dispose();
@@ -98,6 +108,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       }
     });
     widget.socket.markRead(roomId: widget.room.id, messageId: message.id);
+    _persistMessages();
+    _persistPending();
     _scrollToBottom();
   }
 
@@ -118,11 +130,63 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     }
   }
 
-  Future<void> _loadMessages() async {
+  Future<void> _hydrateFromCache() async {
+    final cached = await _messageCache.loadRoom(userId: _userId, roomId: widget.room.id);
+    final pending = await _pendingStore.loadRoom(userId: _userId, roomId: widget.room.id);
+    if (!mounted) return;
+
+    final restoredPending = <PendingOutgoingMessage>[];
+    for (final item in pending) {
+      if (item.hasPersistableFile) {
+        final path = item.localFilePath;
+        if (path == null || !await File(path).exists()) continue;
+      }
+      restoredPending.add(item);
+    }
+
     setState(() {
-      _loading = true;
-      _error = null;
+      if (cached != null && cached.messages.isNotEmpty) {
+        _messages
+          ..clear()
+          ..addAll(cached.messages);
+        _cursor = cached.cursor;
+        _hasMore = cached.hasMore;
+        _loading = false;
+        _messagesOffline = true;
+      }
+      if (restoredPending.isNotEmpty) {
+        _pending
+          ..clear()
+          ..addAll(restoredPending);
+      }
     });
+  }
+
+  Future<void> _persistMessages() {
+    return _messageCache.saveRoom(
+      userId: _userId,
+      roomId: widget.room.id,
+      messages: _messages,
+      cursor: _cursor,
+      hasMore: _hasMore,
+    );
+  }
+
+  Future<void> _persistPending() {
+    return _pendingStore.saveRoom(
+      userId: _userId,
+      roomId: widget.room.id,
+      pending: _pending,
+    );
+  }
+
+  Future<void> _loadMessages() async {
+    if (_messages.isEmpty) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final messages = await _chatApi.fetchMessages(
         token: widget.session.token,
@@ -134,16 +198,41 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           ..clear()
           ..addAll(messages);
         _loading = false;
+        _messagesOffline = false;
+        _error = null;
         _hasMore = messages.length >= 40;
         _cursor = messages.isNotEmpty ? messages.first.createdAt.toUtc().toIso8601String() : null;
       });
+      await _persistMessages();
       _scrollToBottom();
     } on ApiException catch (e) {
       if (!mounted) return;
-      setState(() {
-        _error = e.message;
-        _loading = false;
-      });
+      if (_messages.isNotEmpty) {
+        setState(() {
+          _messagesOffline = true;
+          _loading = false;
+          _error = null;
+        });
+      } else {
+        setState(() {
+          _error = e.message;
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (!mounted) return;
+      if (_messages.isNotEmpty) {
+        setState(() {
+          _messagesOffline = true;
+          _loading = false;
+          _error = null;
+        });
+      } else {
+        setState(() {
+          _error = 'Could not load messages';
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -167,6 +256,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           _hasMore = false;
         }
       });
+      await _persistMessages();
     } catch (_) {
       if (!mounted) return;
       setState(() => _loadingMore = false);
@@ -211,16 +301,26 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     if (!widget.room.canPost) return;
 
     final localId = 'local-${DateTime.now().millisecondsSinceEpoch}';
+    final persistedPath = await _pendingStore.persistMediaFile(
+      userId: _userId,
+      localId: localId,
+      source: file,
+    );
     final pending = PendingOutgoingMessage(
       localId: localId,
       type: messageType,
       previewLabel: previewLabel,
-      localFilePath: file.path,
+      localFilePath: persistedPath ?? file.path,
+      fileName: fileName,
+      purpose: purpose,
+      durationSeconds: durationSeconds,
+      academicYearId: ayId,
     );
     setState(() {
       _pending.add(pending);
       _sending = true;
     });
+    await _persistPending();
     _scrollToBottom();
 
     try {
@@ -255,6 +355,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         mediaFileId: uploaded.id,
       );
       _awaitingSocketPendingId = localId;
+      await _persistPending();
     } on ApiException catch (e) {
       _markPendingFailed(localId);
       _awaitingSocketPendingId = null;
@@ -275,6 +376,29 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         _pending[idx] = _pending[idx].copyWith(phase: PendingSendPhase.failed);
       }
     });
+    _persistPending();
+  }
+
+  Future<void> _retryPending(PendingOutgoingMessage pending) async {
+    if (pending.phase != PendingSendPhase.failed || _sending) return;
+    final path = pending.localFilePath;
+    if (path == null || path.isEmpty) return;
+    final file = File(path);
+    if (!await file.exists()) {
+      _showError('Attachment file is no longer available');
+      return;
+    }
+    setState(() {
+      _pending.removeWhere((p) => p.localId == pending.localId);
+    });
+    await _sendMedia(
+      file: file,
+      fileName: pending.fileName ?? p.basename(path),
+      purpose: pending.purpose ?? 'chat',
+      messageType: pending.type,
+      durationSeconds: pending.durationSeconds,
+      previewLabel: pending.previewLabel,
+    );
   }
 
   void _showError(String message) {
@@ -434,6 +558,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                 ],
               ),
             ),
+          if (_messagesOffline) const OfflineBanner(),
           if (!widget.room.canPost)
             Container(
               width: double.infinity,
@@ -488,7 +613,12 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         final pendingCount = _pending.length;
         if (index < pendingCount) {
           final pending = _pending[pendingCount - 1 - index];
-          return PendingMessageBubble(pending: pending);
+          return PendingMessageBubble(
+            pending: pending,
+            onRetry: pending.phase == PendingSendPhase.failed
+                ? () => _retryPending(pending)
+                : null,
+          );
         }
         final msgIndex = index - pendingCount;
         final message = _messages[_messages.length - 1 - msgIndex];

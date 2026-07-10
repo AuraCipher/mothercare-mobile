@@ -11,9 +11,11 @@ class PendingMessageBubble extends StatelessWidget {
   const PendingMessageBubble({
     super.key,
     required this.pending,
+    this.onRetry,
   });
 
   final PendingOutgoingMessage pending;
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -30,7 +32,7 @@ class PendingMessageBubble extends StatelessWidget {
     final showImagePreview = pending.type == 'image' && localPath != null && localPath.isNotEmpty;
     final showVideoPreview = pending.type == 'video' && localPath != null && localPath.isNotEmpty;
 
-    return Padding(
+    final bubble = Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.end,
@@ -120,6 +122,11 @@ class PendingMessageBubble extends StatelessWidget {
         ],
       ),
     );
+
+    if (pending.phase == PendingSendPhase.failed && onRetry != null) {
+      return GestureDetector(onTap: onRetry, child: bubble);
+    }
+    return bubble;
   }
 
   static String _defaultLabel(String type) {

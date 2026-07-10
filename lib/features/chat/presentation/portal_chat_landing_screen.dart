@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/api/api_exception.dart';
+import '../../../core/storage/cache_constants.dart';
 import '../../../core/storage/session_storage.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/offline_banner.dart';
@@ -58,7 +59,13 @@ class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
   }
 
   Future<void> _load() async {
-    final cached = await _sessionStorage.readChatLandingCache();
+    final cached = await _sessionStorage.readChatLandingCache(
+      scope: widget.kind == PortalChatKind.admin
+          ? ChatLandingScope.admin
+          : ChatLandingScope.teacher,
+      userId: widget.session.payload.id,
+      branchId: widget.branchId,
+    );
     if (cached != null && mounted) {
       setState(() {
         _landing = cached;
@@ -83,7 +90,14 @@ class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
       } else {
         landing = await _chatApi.fetchTeacherLanding(token: widget.session.token);
       }
-      await _sessionStorage.saveChatLandingCache(landing);
+      await _sessionStorage.saveChatLandingCache(
+        landing,
+        scope: widget.kind == PortalChatKind.admin
+            ? ChatLandingScope.admin
+            : ChatLandingScope.teacher,
+        userId: widget.session.payload.id,
+        branchId: widget.branchId,
+      );
       if (!mounted) return;
       setState(() {
         _landing = landing;
