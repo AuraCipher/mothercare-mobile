@@ -11,6 +11,7 @@ import '../models/chat_models.dart';
 import '../widgets/chat_room_tile.dart';
 import '../widgets/landing_header.dart';
 import '../widgets/room_list_icon.dart';
+import '../../../testing/e2e_keys.dart';
 import 'chat_room_screen.dart';
 import 'class_community_screen.dart';
 
@@ -338,6 +339,7 @@ class _PinnedAnnouncementTile extends StatelessWidget {
     return Material(
       color: accent ?? AppColors.violet.withValues(alpha: 0.06),
       child: InkWell(
+        key: ValueKey('${E2eKeys.chatRoomTilePrefix.value}_${room.id}'),
         onTap: onTap,
         child: Container(
           decoration: const BoxDecoration(

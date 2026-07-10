@@ -6,11 +6,12 @@ import 'package:http/http.dart' as http;
 
 import '../../config/app_config.dart';
 import 'api_exception.dart';
+import 'http_client_factory.dart';
 import 'progress_file_stream.dart';
 
 class AuthenticatedClient {
   AuthenticatedClient({http.Client? client, String? baseUrl})
-      : _client = client ?? http.Client(),
+      : _client = HttpClientFactory.create(client: client),
         _baseUrl = baseUrl ?? AppConfig.apiBaseUrl;
 
   final http.Client _client;

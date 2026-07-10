@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../testing/e2e_keys.dart';
 import '../../../config/app_config.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/validation/login_validator.dart';
@@ -170,6 +171,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 32),
                     TextFormField(
+                      key: E2eKeys.loginIdentifier,
                       controller: _identifierController,
                       textInputAction: TextInputAction.next,
                       autocorrect: false,
@@ -182,6 +184,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
+                      key: E2eKeys.loginPassword,
                       controller: _passwordController,
                       obscureText: _obscurePassword,
                       textInputAction: TextInputAction.done,
@@ -227,6 +230,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ],
                     const SizedBox(height: 24),
                     ElevatedButton(
+                      key: E2eKeys.loginSubmit,
                       onPressed: _loading ? null : _submit,
                       child: _loading
                           ? const SizedBox(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../testing/e2e_keys.dart';
 import '../models/chat_models.dart';
 import 'room_list_icon.dart';
 
@@ -28,6 +29,7 @@ class ChatRoomTile extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
+        key: ValueKey('${E2eKeys.chatRoomTilePrefix.value}_${room.id}'),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
