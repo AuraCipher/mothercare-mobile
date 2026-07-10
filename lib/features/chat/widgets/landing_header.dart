@@ -17,6 +17,7 @@ class LandingHeader extends StatelessWidget {
   final VoidCallback? onMenu;
 
   static const double _barHeight = 56;
+  static const double _extraTopInset = 10;
 
   @override
   Widget build(BuildContext context) {
@@ -28,8 +29,8 @@ class LandingHeader extends StatelessWidget {
         statusBarIconBrightness: Brightness.light,
       ),
       child: Container(
-        height: top + _barHeight,
-        padding: EdgeInsets.only(top: top, left: 16, right: 4),
+        height: top + _barHeight + _extraTopInset,
+        padding: EdgeInsets.only(top: top + _extraTopInset, left: 16, right: 4, bottom: 6),
         decoration: const BoxDecoration(
           color: AppColors.violet,
           borderRadius: BorderRadius.vertical(bottom: Radius.circular(16)),

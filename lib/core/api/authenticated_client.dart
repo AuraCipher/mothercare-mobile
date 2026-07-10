@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:http/http.dart' as http;
 
@@ -19,17 +20,21 @@ class AuthenticatedClient {
     Map<String, String>? query,
   }) async {
     final uri = Uri.parse('$_baseUrl$path').replace(queryParameters: query);
-    final res = await _client
-        .get(
-          uri,
-          headers: {
-            'Authorization': 'Bearer $token',
-            'Accept': 'application/json',
-          },
-        )
-        .timeout(const Duration(seconds: 25));
+    try {
+      final res = await _client
+          .get(
+            uri,
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Accept': 'application/json',
+            },
+          )
+          .timeout(const Duration(seconds: 10));
 
-    return _decode(res);
+      return _decode(res);
+    } on TimeoutException {
+      throw ApiException('No internet connection. Check your network.');
+    }
   }
 
   Future<Map<String, dynamic>> postJson(
@@ -38,19 +43,23 @@ class AuthenticatedClient {
     Map<String, dynamic>? body,
   }) async {
     final uri = Uri.parse('$_baseUrl$path');
-    final res = await _client
-        .post(
-          uri,
-          headers: {
-            'Authorization': 'Bearer $token',
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: body == null ? null : jsonEncode(body),
-        )
-        .timeout(const Duration(seconds: 25));
+    try {
+      final res = await _client
+          .post(
+            uri,
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: body == null ? null : jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 10));
 
-    return _decode(res);
+      return _decode(res);
+    } on TimeoutException {
+      throw ApiException('No internet connection. Check your network.');
+    }
   }
 
   Map<String, dynamic> _decode(http.Response res) {

@@ -8,12 +8,12 @@ void main() {
       'sections': [
         {
           'key': 'school',
-          'title': 'Whole School',
+          'title': 'School Announcement',
           'rooms': [
             {
               'id': 'r1',
               'kind': 'school_announcement',
-              'name': 'Whole School',
+              'name': 'School Announcement',
               'unreadCount': 2,
               'lastMessageAt': '2026-07-09T10:00:00.000Z',
               'canPost': false,
@@ -25,7 +25,7 @@ void main() {
         {
           'id': 'r1',
           'kind': 'school_announcement',
-          'name': 'Whole School',
+          'name': 'School Announcement',
           'description': null,
           'canPost': false,
           'unreadCount': 2,
@@ -69,6 +69,11 @@ void main() {
     expect(classAnnouncementRooms(section).length, 1);
     expect(classGroupRooms(section).length, 1);
     expect(classCommunityUnread(section), 3);
+  });
+
+  test('normalizeChatLabel renames legacy Whole School', () {
+    expect(normalizeChatLabel('Whole School'), 'School Announcement');
+    expect(normalizeChatLabel('Mathematics'), 'Mathematics');
   });
 
   test('StudentBootstrap parses branch and user from API', () {

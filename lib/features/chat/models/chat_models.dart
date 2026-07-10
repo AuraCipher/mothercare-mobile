@@ -22,7 +22,7 @@ class ChatRoomSummary {
     return ChatRoomSummary(
       id: json['id'] as String? ?? '',
       kind: json['kind'] as String? ?? '',
-      name: json['name'] as String? ?? '',
+      name: normalizeChatLabel(json['name'] as String? ?? ''),
       description: json['description'] as String?,
       canPost: json['canPost'] as bool? ?? false,
       unreadCount: json['unreadCount'] is int
@@ -31,6 +31,16 @@ class ChatRoomSummary {
       lastMessageAt: last != null ? DateTime.tryParse(last) : null,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'kind': kind,
+        'name': name,
+        'description': description,
+        'canPost': canPost,
+        'unreadCount': unreadCount,
+        'lastMessageAt': lastMessageAt?.toUtc().toIso8601String(),
+      };
 }
 
 class ChatLandingSection {
@@ -48,12 +58,18 @@ class ChatLandingSection {
     final roomsRaw = json['rooms'] as List<dynamic>? ?? [];
     return ChatLandingSection(
       key: json['key'] as String? ?? '',
-      title: json['title'] as String? ?? '',
+      title: normalizeChatLabel(json['title'] as String? ?? ''),
       rooms: roomsRaw
           .map((e) => ChatRoomSummary.fromJson(e as Map<String, dynamic>))
           .toList(),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'key': key,
+        'title': title,
+        'rooms': rooms.map((r) => r.toJson()).toList(),
+      };
 }
 
 class ChatLandingData {
@@ -84,6 +100,11 @@ class ChatLandingData {
     }
     return null;
   }
+
+  Map<String, dynamic> toJson() => {
+        'sections': sections.map((s) => s.toJson()).toList(),
+        'rooms': rooms.map((r) => r.toJson()).toList(),
+      };
 }
 
 class ChatMessageSender {
@@ -160,6 +181,12 @@ class ChatMessage {
       createdAt: DateTime.tryParse(created) ?? DateTime.now(),
     );
   }
+}
+
+/// Maps legacy backend labels to current copy.
+String normalizeChatLabel(String value) {
+  if (value == 'Whole School') return 'School Announcement';
+  return value;
 }
 
 /// Student's class name from bootstrap, e.g. "Playgroup" or "Class 8 — CS".

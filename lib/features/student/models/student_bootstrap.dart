@@ -32,4 +32,15 @@ class StudentBootstrap {
       rollNumber: student['rollNumber'] as String?,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'academicYear': {'id': academicYearId, 'label': academicYearLabel},
+        'branch': {'name': branchName},
+        'user': {'name': userName},
+        'student': {
+          'name': studentName,
+          'groupLabel': groupLabel,
+          'rollNumber': rollNumber,
+        },
+      };
 }

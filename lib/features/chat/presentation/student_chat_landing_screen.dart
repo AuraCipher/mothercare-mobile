@@ -22,12 +22,14 @@ class StudentChatLandingScreen extends StatefulWidget {
     required this.socket,
     required this.bootstrap,
     this.onLogout,
+    this.onOfflineChanged,
   });
 
   final StoredSession session;
   final ChatSocketService socket;
   final StudentBootstrap bootstrap;
   final VoidCallback? onLogout;
+  final ValueChanged<bool>? onOfflineChanged;
 
   @override
   State<StudentChatLandingScreen> createState() => _StudentChatLandingScreenState();
@@ -35,6 +37,7 @@ class StudentChatLandingScreen extends StatefulWidget {
 
 class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
   final _chatApi = ChatApi();
+  final _sessionStorage = SessionStorage();
   ChatLandingData? _landing;
   String? _error;
   bool _loading = true;
@@ -46,29 +49,51 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
   }
 
   Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    final cached = await _sessionStorage.readChatLandingCache();
+    if (cached != null && mounted) {
+      setState(() {
+        _landing = cached;
+        _loading = false;
+        _error = null;
+      });
+      widget.onOfflineChanged?.call(true);
+    } else if (mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+
     try {
       final landing = await _chatApi.fetchStudentLanding(token: widget.session.token);
+      await _sessionStorage.saveChatLandingCache(landing);
       if (!mounted) return;
       setState(() {
         _landing = landing;
         _loading = false;
+        _error = null;
       });
+      widget.onOfflineChanged?.call(false);
     } on ApiException catch (e) {
       if (!mounted) return;
-      setState(() {
-        _error = e.message;
-        _loading = false;
-      });
+      if (_landing != null) {
+        widget.onOfflineChanged?.call(true);
+      } else {
+        setState(() {
+          _error = e.message;
+          _loading = false;
+        });
+      }
     } catch (_) {
       if (!mounted) return;
-      setState(() {
-        _error = 'Could not load chat. Pull to refresh.';
-        _loading = false;
-      });
+      if (_landing != null) {
+        widget.onOfflineChanged?.call(true);
+      } else {
+        setState(() {
+          _error = 'Could not load chat. Pull to refresh.';
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -188,6 +213,8 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              const Icon(Icons.cloud_off_rounded, size: 48, color: AppColors.textMuted),
+              const SizedBox(height: 16),
               Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.error)),
               const SizedBox(height: 16),
               ElevatedButton(onPressed: _load, child: const Text('Retry')),

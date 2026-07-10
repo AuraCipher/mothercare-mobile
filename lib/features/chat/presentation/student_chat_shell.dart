@@ -4,6 +4,7 @@ import '../../../config/app_config.dart';
 import '../../../core/api/api_exception.dart';
 import '../../../core/storage/session_storage.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/offline_banner.dart';
 import '../../auth/presentation/login_screen.dart';
 import '../../student/data/student_api.dart';
 import '../../student/models/student_bootstrap.dart';
@@ -25,10 +26,12 @@ class StudentChatShell extends StatefulWidget {
 
 class _StudentChatShellState extends State<StudentChatShell> {
   final _studentApi = StudentApi();
+  final _sessionStorage = SessionStorage();
   final _socket = ChatSocketService();
   StudentBootstrap? _bootstrap;
   String? _error;
   bool _loading = true;
+  bool _offline = false;
   StudentNavTab _tab = StudentNavTab.chats;
 
   @override
@@ -43,43 +46,65 @@ class _StudentChatShellState extends State<StudentChatShell> {
     super.dispose();
   }
 
-  Future<void> _loadBootstrap() async {
+  void _applyBootstrap(StudentBootstrap data, {required bool offline}) {
+    _socket.connect(
+      token: widget.session.token,
+      academicYearId: data.academicYearId,
+    );
     setState(() {
-      _loading = true;
+      _bootstrap = data;
+      _loading = false;
+      _offline = offline;
       _error = null;
     });
+  }
+
+  Future<void> _loadBootstrap() async {
+    final cached = await _sessionStorage.readBootstrapCache();
+    if (cached != null && cached.academicYearId.isNotEmpty && mounted) {
+      await _sessionStorage.saveAcademicYearId(cached.academicYearId);
+      _applyBootstrap(cached, offline: true);
+    } else if (mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+
     try {
       final data = await _studentApi.fetchBootstrap(token: widget.session.token);
       if (data.academicYearId.isEmpty) {
         throw ApiException('No active academic year');
       }
-      await SessionStorage().saveAcademicYearId(data.academicYearId);
-      _socket.connect(
-        token: widget.session.token,
-        academicYearId: data.academicYearId,
-      );
+      await _sessionStorage.saveAcademicYearId(data.academicYearId);
+      await _sessionStorage.saveBootstrapCache(data);
       if (!mounted) return;
-      setState(() {
-        _bootstrap = data;
-        _loading = false;
-      });
+      _applyBootstrap(data, offline: false);
     } on ApiException catch (e) {
       if (!mounted) return;
-      setState(() {
-        _error = e.message;
-        _loading = false;
-      });
+      if (_bootstrap != null) {
+        setState(() => _offline = true);
+      } else {
+        setState(() {
+          _error = e.message;
+          _loading = false;
+        });
+      }
     } catch (_) {
       if (!mounted) return;
-      setState(() {
-        _error = 'Could not start chat. Check your connection.';
-        _loading = false;
-      });
+      if (_bootstrap != null) {
+        setState(() => _offline = true);
+      } else {
+        setState(() {
+          _error = 'Could not start chat. Check your connection.';
+          _loading = false;
+        });
+      }
     }
   }
 
   Future<void> _logout() async {
-    await SessionStorage().clear();
+    await _sessionStorage.clear();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -104,6 +129,8 @@ class _StudentChatShellState extends State<StudentChatShell> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                const Icon(Icons.cloud_off_rounded, size: 48, color: AppColors.textMuted),
+                const SizedBox(height: 16),
                 Text(_error ?? 'Setup failed', textAlign: TextAlign.center),
                 const SizedBox(height: 16),
                 ElevatedButton(onPressed: _loadBootstrap, child: const Text('Retry')),
@@ -117,7 +144,17 @@ class _StudentChatShellState extends State<StudentChatShell> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: SafeArea(top: false, bottom: false, child: _buildTabBody()),
+      body: SafeArea(
+        top: false,
+        bottom: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_offline) const OfflineBanner(),
+            Expanded(child: _buildTabBody()),
+          ],
+        ),
+      ),
       bottomNavigationBar: StudentBottomNav(
         current: _tab,
         onChanged: (tab) => setState(() => _tab = tab),
@@ -134,6 +171,9 @@ class _StudentChatShellState extends State<StudentChatShell> {
           socket: _socket,
           bootstrap: bootstrap,
           onLogout: _logout,
+          onOfflineChanged: (offline) {
+            if (mounted) setState(() => _offline = offline || _offline);
+          },
         );
       case StudentNavTab.academics:
         return Column(

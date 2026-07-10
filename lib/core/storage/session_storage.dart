@@ -4,12 +4,16 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../auth/jwt_utils.dart';
 import '../../features/auth/models/auth_models.dart';
+import '../../features/student/models/student_bootstrap.dart';
+import '../../features/chat/models/chat_models.dart';
 
 const _kToken = 'mcs_auth_token';
 const _kUser = 'mcs_auth_user';
 const _kPush = 'mcs_push_crypto';
 const _kBranchId = 'mcs_active_branch_id';
 const _kAcademicYearId = 'mcs_academic_year_id';
+const _kBootstrapCache = 'mcs_bootstrap_cache';
+const _kChatLandingCache = 'mcs_chat_landing_cache';
 
 class SessionStorage {
   SessionStorage({FlutterSecureStorage? storage})
@@ -59,6 +63,36 @@ class SessionStorage {
     await _storage.delete(key: _kPush);
     await _storage.delete(key: _kBranchId);
     await _storage.delete(key: _kAcademicYearId);
+    await _storage.delete(key: _kBootstrapCache);
+    await _storage.delete(key: _kChatLandingCache);
+  }
+
+  Future<void> saveBootstrapCache(StudentBootstrap bootstrap) async {
+    await _storage.write(key: _kBootstrapCache, value: jsonEncode(bootstrap.toJson()));
+  }
+
+  Future<StudentBootstrap?> readBootstrapCache() async {
+    final raw = await _storage.read(key: _kBootstrapCache);
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      return StudentBootstrap.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> saveChatLandingCache(ChatLandingData landing) async {
+    await _storage.write(key: _kChatLandingCache, value: jsonEncode(landing.toJson()));
+  }
+
+  Future<ChatLandingData?> readChatLandingCache() async {
+    final raw = await _storage.read(key: _kChatLandingCache);
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      return ChatLandingData.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+    } catch (_) {
+      return null;
+    }
   }
 }
 
