@@ -7,9 +7,10 @@ import '../../../core/theme/app_theme.dart';
 import '../data/chat_api.dart';
 import '../data/chat_socket_service.dart';
 import '../models/chat_models.dart';
+import '../../student/models/student_bootstrap.dart';
 import '../widgets/chat_room_tile.dart';
 import '../../../config/app_config.dart';
-import '../../../core/widgets/universal_header.dart';
+import '../widgets/landing_header.dart';
 import '../widgets/room_list_icon.dart';
 import 'chat_room_screen.dart';
 import 'class_community_screen.dart';
@@ -19,15 +20,13 @@ class StudentChatLandingScreen extends StatefulWidget {
     super.key,
     required this.session,
     required this.socket,
-    required this.academicYearId,
-    this.groupLabel,
+    required this.bootstrap,
     this.onLogout,
   });
 
   final StoredSession session;
   final ChatSocketService socket;
-  final String academicYearId;
-  final String? groupLabel;
+  final StudentBootstrap bootstrap;
   final VoidCallback? onLogout;
 
   @override
@@ -81,14 +80,53 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
           session: widget.session,
           socket: widget.socket,
           room: full,
-          groupLabel: widget.groupLabel,
+          groupLabel: widget.bootstrap.groupLabel,
         ),
       ),
     ).then((_) => _load());
   }
 
+  void _showMenu() {
+    final bootstrap = widget.bootstrap;
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.school_outlined),
+              title: Text(bootstrap.branchName),
+              subtitle: Text(bootstrap.academicYearLabel),
+            ),
+            if (bootstrap.groupLabel != null)
+              ListTile(
+                leading: const Icon(Icons.class_outlined),
+                title: Text(bootstrap.groupLabel!),
+                subtitle: Text(bootstrap.userName),
+              ),
+            ListTile(
+              leading: const Icon(Icons.logout_rounded),
+              title: const Text('Logout'),
+              onTap: () {
+                Navigator.pop(ctx);
+                widget.onLogout?.call();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String get _headerTitle {
+    final branch = widget.bootstrap.branchName.trim();
+    if (branch.isNotEmpty) return branch;
+    return AppConfig.appName;
+  }
+
   void _openClassCommunity(ChatLandingSection section) {
-    final label = classDisplayName(widget.groupLabel);
+    final label = classDisplayName(widget.bootstrap.groupLabel);
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => ClassCommunityScreen(
@@ -128,7 +166,11 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        UniversalHeader(title: AppConfig.appName),
+        LandingHeader(
+          title: _headerTitle,
+          onSearch: () {},
+          onMenu: _showMenu,
+        ),
         Expanded(child: _buildBody()),
       ],
     );
@@ -185,7 +227,7 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
             _SchoolAnnouncementTile(room: announcement, onTap: () => _openRoom(announcement)),
           if (hasClass)
             _ClassCommunityEntryTile(
-              title: classDisplayName(widget.groupLabel),
+              title: classDisplayName(widget.bootstrap.groupLabel),
               unread: classCommunityUnread(classSection),
               onTap: () => _openClassCommunity(classSection),
             ),
@@ -197,11 +239,11 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
 
   List<Widget> _buildGenericSection(ChatLandingSection section) {
     return [
-      _sectionHeading(displaySectionTitle(section, groupLabel: widget.groupLabel)),
+      _sectionHeading(displaySectionTitle(section, groupLabel: widget.bootstrap.groupLabel)),
       ...section.rooms.map(
         (room) => ChatRoomTile(
           room: room,
-          displayName: displayRoomName(room, groupLabel: widget.groupLabel),
+          displayName: displayRoomName(room, groupLabel: widget.bootstrap.groupLabel),
           onTap: () => _openRoom(room),
         ),
       ),
@@ -253,9 +295,9 @@ class _SchoolAnnouncementTile extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Announcement',
-                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: AppColors.textPrimary),
+                    Text(
+                      room.name,
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: AppColors.textPrimary),
                     ),
                     if (timeLabel != null)
                       Text(timeLabel, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),

@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 
+import '../../../config/app_config.dart';
 import '../../../core/api/api_exception.dart';
 import '../../../core/storage/session_storage.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/presentation/login_screen.dart';
 import '../../student/data/student_api.dart';
+import '../../student/models/student_bootstrap.dart';
 import '../data/chat_socket_service.dart';
-import '../../../core/widgets/universal_header.dart';
 import '../widgets/student_bottom_nav.dart';
+import '../../../core/widgets/universal_header.dart';
 import 'student_chat_landing_screen.dart';
 import 'student_placeholder_tab.dart';
 
@@ -24,8 +26,7 @@ class StudentChatShell extends StatefulWidget {
 class _StudentChatShellState extends State<StudentChatShell> {
   final _studentApi = StudentApi();
   final _socket = ChatSocketService();
-  String? _academicYearId;
-  String? _groupLabel;
+  StudentBootstrap? _bootstrap;
   String? _error;
   bool _loading = true;
   StudentNavTab _tab = StudentNavTab.chats;
@@ -33,7 +34,7 @@ class _StudentChatShellState extends State<StudentChatShell> {
   @override
   void initState() {
     super.initState();
-    _bootstrap();
+    _loadBootstrap();
   }
 
   @override
@@ -42,7 +43,7 @@ class _StudentChatShellState extends State<StudentChatShell> {
     super.dispose();
   }
 
-  Future<void> _bootstrap() async {
+  Future<void> _loadBootstrap() async {
     setState(() {
       _loading = true;
       _error = null;
@@ -59,8 +60,7 @@ class _StudentChatShellState extends State<StudentChatShell> {
       );
       if (!mounted) return;
       setState(() {
-        _academicYearId = data.academicYearId;
-        _groupLabel = data.groupLabel;
+        _bootstrap = data;
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -95,9 +95,9 @@ class _StudentChatShellState extends State<StudentChatShell> {
       );
     }
 
-    if (_error != null || _academicYearId == null) {
+    if (_error != null || _bootstrap == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Mother Care')),
+        appBar: AppBar(title: Text(AppConfig.appName)),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -106,7 +106,7 @@ class _StudentChatShellState extends State<StudentChatShell> {
               children: [
                 Text(_error ?? 'Setup failed', textAlign: TextAlign.center),
                 const SizedBox(height: 16),
-                ElevatedButton(onPressed: _bootstrap, child: const Text('Retry')),
+                ElevatedButton(onPressed: _loadBootstrap, child: const Text('Retry')),
                 TextButton(onPressed: _logout, child: const Text('Logout')),
               ],
             ),
@@ -126,25 +126,27 @@ class _StudentChatShellState extends State<StudentChatShell> {
   }
 
   Widget _buildTabBody() {
+    final bootstrap = _bootstrap!;
     switch (_tab) {
       case StudentNavTab.chats:
         return StudentChatLandingScreen(
           session: widget.session,
           socket: _socket,
-          academicYearId: _academicYearId!,
-          groupLabel: _groupLabel,
+          bootstrap: bootstrap,
           onLogout: _logout,
         );
       case StudentNavTab.academics:
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const UniversalHeader(title: 'Academics'),
+            UniversalHeader(
+              title: bootstrap.academicYearLabel,
+              subtitle: bootstrap.branchName,
+            ),
             Expanded(
               child: StudentPlaceholderTab(
-                title: 'Academics',
+                bootstrap: bootstrap,
                 message: 'Fees, attendance, results, and timetable — coming in Phase 2.',
-                session: widget.session,
                 icon: Icons.menu_book_outlined,
               ),
             ),
@@ -154,13 +156,17 @@ class _StudentChatShellState extends State<StudentChatShell> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const UniversalHeader(title: 'Profile'),
+            UniversalHeader(
+              title: bootstrap.userName,
+              subtitle: bootstrap.groupLabel,
+            ),
             Expanded(
               child: StudentPlaceholderTab(
-                title: 'Profile',
+                bootstrap: bootstrap,
                 message: 'Your school profile and settings.',
-                session: widget.session,
                 icon: Icons.person_outline_rounded,
+                showLogout: true,
+                onLogout: _logout,
               ),
             ),
           ],

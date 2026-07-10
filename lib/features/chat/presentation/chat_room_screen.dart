@@ -161,7 +161,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       body: Column(
         children: [
           UniversalHeader(
-            title: displayRoomName(widget.room, groupLabel: widget.groupLabel),
+            title: widget.room.name,
             showBack: true,
           ),
           if (!widget.room.canPost)

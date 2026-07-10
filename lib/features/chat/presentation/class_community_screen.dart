@@ -173,20 +173,20 @@ class _PinnedClassAnnouncementCard extends StatelessWidget {
               children: [
                 RoomListIcon(room: room, size: 44),
                 const SizedBox(width: 12),
-                const Expanded(
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Class Announcement',
-                        style: TextStyle(
+                        room.name,
+                        style: const TextStyle(
                           fontWeight: FontWeight.w700,
                           fontSize: 15,
                           color: AppColors.textPrimary,
                         ),
                       ),
-                      SizedBox(height: 2),
-                      Text(
+                      const SizedBox(height: 2),
+                      const Text(
                         'Announcements from teachers & admin',
                         style: TextStyle(fontSize: 12, color: AppColors.textMuted),
                       ),

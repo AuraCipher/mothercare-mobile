@@ -176,7 +176,6 @@ String displayRoomName(ChatRoomSummary room, {String? groupLabel}) {
 }
 
 String displaySectionTitle(ChatLandingSection section, {String? groupLabel}) {
-  if (section.key == 'school') return 'Announcement';
   if (section.key == 'class') return classCommunityTitle(groupLabel);
   return section.title;
 }

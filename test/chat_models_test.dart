@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/features/chat/models/chat_models.dart';
+import 'package:mobile/features/student/models/student_bootstrap.dart';
 
 void main() {
   test('ChatLandingData parses sections and rooms', () {
@@ -68,5 +69,19 @@ void main() {
     expect(classAnnouncementRooms(section).length, 1);
     expect(classGroupRooms(section).length, 1);
     expect(classCommunityUnread(section), 3);
+  });
+
+  test('StudentBootstrap parses branch and user from API', () {
+    final bootstrap = StudentBootstrap.fromJson({
+      'academicYear': {'id': 'ay1', 'label': '2025-2026'},
+      'branch': {'name': 'Mother Care Sohan', 'code': 'MCS-SOH'},
+      'student': {'name': 'Ahmed Ali', 'groupLabel': 'Playgroup', 'rollNumber': 'PG-01'},
+      'user': {'name': 'Ahmed Ali'},
+    });
+
+    expect(bootstrap.branchName, 'Mother Care Sohan');
+    expect(bootstrap.userName, 'Ahmed Ali');
+    expect(bootstrap.groupLabel, 'Playgroup');
+    expect(bootstrap.academicYearLabel, '2025-2026');
   });
 }
