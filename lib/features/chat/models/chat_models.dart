@@ -295,7 +295,8 @@ class ChatMessageMedia {
 
   bool get hasContent => id.isNotEmpty && url.isNotEmpty;
   bool get isImage => mimeType.startsWith('image/');
-  bool get isVideo => mimeType.startsWith('video/');
+  bool get isVideo =>
+      purpose != 'voice_note' && (mimeType.startsWith('video/') || purpose == 'video');
   bool get isAudio => mimeType.startsWith('audio/') || purpose == 'voice_note';
 
   Map<String, dynamic> toJson() => {

@@ -1,8 +1,9 @@
-import 'dart:convert';
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 
 import '../../config/app_config.dart';
 import 'api_exception.dart';
@@ -118,6 +119,7 @@ class AuthenticatedClient {
     required File file,
     required String fileName,
     required Map<String, String> fields,
+    String? mimeType,
     void Function(double progress)? onProgress,
   }) async {
     final uri = Uri.parse('$_baseUrl$path');
@@ -137,6 +139,7 @@ class AuthenticatedClient {
         byteStream,
         total,
         filename: fileName,
+        contentType: mimeType != null ? MediaType.parse(mimeType) : null,
       ));
 
       final streamed = await request.send().timeout(const Duration(minutes: 10));

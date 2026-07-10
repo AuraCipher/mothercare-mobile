@@ -15,9 +15,10 @@ class UploadApi {
     required String academicYearId,
     required String purpose,
     String? durationSeconds,
+    String? mimeType,
     void Function(double progress)? onProgress,
   }) async {
-    final fields = {
+    final fields = <String, String>{
       'purpose': purpose,
       'entityType': 'chat',
       'roomId': roomId,
@@ -30,6 +31,7 @@ class UploadApi {
       file: file,
       fileName: fileName,
       fields: fields,
+      mimeType: mimeType,
       onProgress: onProgress,
     );
     final data = body['data'] as Map<String, dynamic>? ?? {};

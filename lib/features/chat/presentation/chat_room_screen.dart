@@ -2,11 +2,10 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
-import 'package:record/record.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../config/app_config.dart';
@@ -24,7 +23,9 @@ import '../models/chat_models.dart';
 import '../models/pending_outgoing_message.dart';
 import '../widgets/chat_video_bubble.dart';
 import '../widgets/chat_voice_bubble.dart';
+import '../widgets/chat_composer_bar.dart';
 import '../widgets/pending_message_bubble.dart';
+import '../widgets/voice_note_recorder.dart';
 
 class ChatRoomScreen extends StatefulWidget {
   const ChatRoomScreen({
@@ -54,7 +55,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   final _messageCache = ChatMessageCacheStore.instance;
   final _pendingStore = PendingOutgoingStore.instance;
   final _picker = ImagePicker();
-  final _recorder = AudioRecorder();
+  final _voiceRecorder = VoiceNoteRecorder();
   final _composer = TextEditingController();
   final _scrollController = ScrollController();
 
@@ -64,7 +65,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   bool _loading = true;
   bool _loadingMore = false;
   bool _sending = false;
-  bool _recording = false;
   String? _error;
   String? _cursor;
   bool _hasMore = true;
@@ -77,6 +77,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   void initState() {
     super.initState();
     _userId = widget.session.payload.id;
+    _voiceRecorder.onTick = (_) {
+      if (mounted) setState(() {});
+    };
     widget.socket.joinRoom(widget.room.id);
     widget.socket.markRead(roomId: widget.room.id);
     _messageSub = widget.socket.onMessage.listen(_onSocketMessage);
@@ -90,7 +93,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     _persistPending();
     _messageSub?.cancel();
     _errorSub?.cancel();
-    _recorder.dispose();
+    _voiceRecorder.dispose();
     _scrollController.dispose();
     _composer.dispose();
     super.dispose();
@@ -292,6 +295,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     required String messageType,
     String? durationSeconds,
     String? previewLabel,
+    String? mimeType,
   }) async {
     final ayId = widget.academicYearId;
     if (ayId == null || ayId.isEmpty) {
@@ -332,6 +336,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         academicYearId: ayId,
         purpose: purpose,
         durationSeconds: durationSeconds,
+        mimeType: mimeType,
         onProgress: (p) {
           if (!mounted) return;
           setState(() {
@@ -442,30 +447,44 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     );
   }
 
-  Future<void> _toggleVoiceRecording() async {
-    if (_recording) {
-      final path = await _recorder.stop();
-      setState(() => _recording = false);
-      if (path == null) return;
-      final file = File(path);
-      await _sendMedia(
-        file: file,
-        fileName: 'voice_${DateTime.now().millisecondsSinceEpoch}.m4a',
-        purpose: 'voice_note',
-        messageType: 'voice_note',
-        previewLabel: 'Voice message',
-      );
-      return;
-    }
-
-    if (!await _recorder.hasPermission()) {
+  Future<void> _startVoiceRecording() async {
+    final ok = await _voiceRecorder.start();
+    if (!ok) {
       _showError('Microphone permission is required for voice notes');
       return;
     }
-    final dir = await getTemporaryDirectory();
-    final path = '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
-    await _recorder.start(const RecordConfig(encoder: AudioEncoder.aacLc), path: path);
-    setState(() => _recording = true);
+    if (mounted) setState(() {});
+  }
+
+  void _onVoiceRecordMove(LongPressMoveUpdateDetails details) {
+    if (_voiceRecorder.phase != VoiceRecorderPhase.recording) return;
+    if (details.localOffsetFromOrigin.dy < -72) {
+      _voiceRecorder.lock();
+      HapticFeedback.lightImpact();
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> _finishVoiceRecording({required bool send}) async {
+    if (_voiceRecorder.phase == VoiceRecorderPhase.idle) return;
+    if (!send) {
+      await _voiceRecorder.cancel();
+      if (mounted) setState(() {});
+      return;
+    }
+    final elapsed = _voiceRecorder.elapsed;
+    final file = await _voiceRecorder.finish();
+    if (mounted) setState(() {});
+    if (file == null) return;
+    await _sendMedia(
+      file: file,
+      fileName: 'voice_${DateTime.now().millisecondsSinceEpoch}.m4a',
+      purpose: 'voice_note',
+      messageType: 'voice_note',
+      durationSeconds: elapsed.inSeconds > 0 ? elapsed.inSeconds.toString() : '1',
+      previewLabel: 'Voice message',
+      mimeType: 'audio/mp4',
+    );
   }
 
   void _showAttachmentSheet() {
@@ -496,14 +515,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
               onTap: () {
                 Navigator.pop(ctx);
                 _pickVideo();
-              },
-            ),
-            ListTile(
-              leading: Icon(_recording ? Icons.stop_circle_outlined : Icons.mic_none_rounded),
-              title: Text(_recording ? 'Stop & send voice note' : 'Voice note'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _toggleVoiceRecording();
               },
             ),
           ],
@@ -538,24 +549,24 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     final me = widget.session.payload.id;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: const Color(0xFFF2F2F2),
       body: Column(
         children: [
           UniversalHeader(
             title: widget.room.name,
             showBack: true,
           ),
-          if (_recording)
+          if (_voiceRecorder.phase != VoiceRecorderPhase.idle)
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              color: AppColors.error.withValues(alpha: 0.1),
-              child: const Row(
-                children: [
-                  Icon(Icons.fiber_manual_record, color: AppColors.error, size: 12),
-                  SizedBox(width: 8),
-                  Text('Recording voice note…', style: TextStyle(fontSize: 12, color: AppColors.error)),
-                ],
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              color: AppColors.violet.withValues(alpha: 0.06),
+              child: Text(
+                _voiceRecorder.phase == VoiceRecorderPhase.locked
+                    ? 'Recording locked — tap send or delete'
+                    : 'Recording… release to send',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 11, color: AppColors.violet, fontWeight: FontWeight.w500),
               ),
             ),
           if (_messagesOffline) const OfflineBanner(),
@@ -634,48 +645,22 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   }
 
   Widget _buildComposer() {
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-        child: Row(
-          children: [
-            IconButton(
-              onPressed: _sending ? null : _showAttachmentSheet,
-              icon: const Icon(Icons.attach_file_rounded, color: AppColors.violet),
-            ),
-            Expanded(
-              child: TextField(
-                controller: _composer,
-                textInputAction: TextInputAction.send,
-                onSubmitted: (_) => _sendText(),
-                decoration: InputDecoration(
-                  hintText: 'Message',
-                  filled: true,
-                  fillColor: AppColors.surface,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide: const BorderSide(color: AppColors.border),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide: const BorderSide(color: AppColors.border),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            IconButton.filled(
-              onPressed: _sending ? null : _sendText,
-              style: IconButton.styleFrom(backgroundColor: AppColors.violet, foregroundColor: Colors.white),
-              icon: _sending
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Icon(Icons.send_rounded),
-            ),
-          ],
-        ),
-      ),
+    final recording = _voiceRecorder.phase != VoiceRecorderPhase.idle;
+    return ChatComposerBar(
+      controller: _composer,
+      enabled: widget.room.canPost,
+      sending: _sending,
+      isRecording: recording,
+      isLocked: _voiceRecorder.phase == VoiceRecorderPhase.locked,
+      recordElapsed: _voiceRecorder.elapsed,
+      onAttach: _showAttachmentSheet,
+      onCamera: () => _pickPhoto(ImageSource.camera),
+      onSendText: _sendText,
+      onRecordStart: _startVoiceRecording,
+      onRecordMove: _onVoiceRecordMove,
+      onRecordEnd: () => _finishVoiceRecording(send: true),
+      onLockedSend: () => _finishVoiceRecording(send: true),
+      onRecordCancel: () => _finishVoiceRecording(send: false),
     );
   }
 }
@@ -741,18 +726,9 @@ class _MessageBubble extends StatelessWidget {
                           Text(message.displayText, style: TextStyle(color: fg)),
                     ),
                   )
-                else if (message.mediaFile?.isVideo == true || message.type == 'video')
-                  mediaUrl.isNotEmpty
-                      ? ChatVideoBubble(url: mediaUrl, authToken: authToken)
-                      : Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.videocam_rounded, color: fg, size: 20),
-                            const SizedBox(width: 8),
-                            Text('Video', style: TextStyle(color: fg, fontWeight: FontWeight.w600)),
-                          ],
-                        )
-                else if (message.mediaFile?.isAudio == true || message.type == 'voice_note' || message.type == 'audio')
+                else if (message.type == 'voice_note' ||
+                    message.type == 'audio' ||
+                    message.mediaFile?.isAudio == true)
                   mediaUrl.isNotEmpty
                       ? ChatVoiceBubble(
                           url: mediaUrl,
@@ -766,6 +742,17 @@ class _MessageBubble extends StatelessWidget {
                             Icon(Icons.mic_rounded, color: fg, size: 20),
                             const SizedBox(width: 8),
                             Text('Voice message', style: TextStyle(color: fg, fontWeight: FontWeight.w600)),
+                          ],
+                        )
+                else if (message.mediaFile?.isVideo == true || message.type == 'video')
+                  mediaUrl.isNotEmpty
+                      ? ChatVideoBubble(url: mediaUrl, authToken: authToken)
+                      : Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.videocam_rounded, color: fg, size: 20),
+                            const SizedBox(width: 8),
+                            Text('Video', style: TextStyle(color: fg, fontWeight: FontWeight.w600)),
                           ],
                         ),
                 if (message.displayText.isNotEmpty &&
