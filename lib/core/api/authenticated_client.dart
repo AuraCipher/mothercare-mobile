@@ -64,6 +64,28 @@ class AuthenticatedClient {
     }
   }
 
+  Future<Map<String, dynamic>> deleteJson(
+    String path, {
+    required String token,
+    Map<String, dynamic>? body,
+  }) async {
+    final uri = Uri.parse('$_baseUrl$path');
+    try {
+      final request = http.Request('DELETE', uri);
+      request.headers['Authorization'] = 'Bearer $token';
+      request.headers['Content-Type'] = 'application/json';
+      request.headers['Accept'] = 'application/json';
+      if (body != null) {
+        request.body = jsonEncode(body);
+      }
+      final streamed = await _client.send(request).timeout(const Duration(seconds: 10));
+      final res = await http.Response.fromStream(streamed);
+      return _decode(res);
+    } on TimeoutException {
+      throw ApiException('No internet connection. Check your network.');
+    }
+  }
+
   Map<String, dynamic> _decode(http.Response res) {
     Map<String, dynamic> body = {};
     try {

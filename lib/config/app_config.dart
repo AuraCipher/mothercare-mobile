@@ -11,4 +11,22 @@ class AppConfig {
   );
 
   static const String appName = 'Mother Care';
+
+  /// Set `--dart-define=PUSH_ENABLED=true` after Firebase is configured.
+  static const bool pushEnabled = bool.fromEnvironment(
+    'PUSH_ENABLED',
+    defaultValue: false,
+  );
+
+  static const String firebaseApiKey = String.fromEnvironment('FIREBASE_API_KEY');
+  static const String firebaseAppId = String.fromEnvironment('FIREBASE_APP_ID');
+  static const String firebaseMessagingSenderId =
+      String.fromEnvironment('FIREBASE_MESSAGING_SENDER_ID');
+  static const String firebaseProjectId = String.fromEnvironment('FIREBASE_PROJECT_ID');
+
+  static bool get hasFirebaseOptions =>
+      firebaseApiKey.isNotEmpty &&
+      firebaseAppId.isNotEmpty &&
+      firebaseMessagingSenderId.isNotEmpty &&
+      firebaseProjectId.isNotEmpty;
 }

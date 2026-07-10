@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/push/chat_push_nav.dart';
+import '../../../core/push/chat_push_service.dart';
 import '../../../config/app_config.dart';
 import '../../../core/api/api_exception.dart';
 import '../../../core/storage/session_storage.dart';
@@ -34,13 +36,34 @@ class _AdminStaffShellState extends State<AdminStaffShell> {
   @override
   void initState() {
     super.initState();
+    _bindPush();
     _loadBootstrap();
   }
 
   @override
   void dispose() {
+    ChatPushService.instance.setRoomTapHandler(null);
     _socket.dispose();
     super.dispose();
+  }
+
+  void _bindPush() {
+    ChatPushService.instance.setRoomTapHandler((roomId, roomName) {
+      if (!mounted) return;
+      final bootstrap = _bootstrap;
+      if (bootstrap == null) return;
+      setState(() => _tab = PortalNavTab.chats);
+      openChatRoomFromPush(
+        context: context,
+        session: widget.session,
+        socket: _socket,
+        roomId: roomId,
+        roomName: roomName,
+        academicYearId: bootstrap.academicYearId,
+        branchId: bootstrap.branchId,
+      );
+    });
+    ChatPushService.instance.bindSession(widget.session.token);
   }
 
   void _applyBootstrap(StaffBootstrap data) {
@@ -92,6 +115,7 @@ class _AdminStaffShellState extends State<AdminStaffShell> {
   }
 
   Future<void> _logout() async {
+    await ChatPushService.instance.unbindSession();
     await _sessionStorage.clear();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(

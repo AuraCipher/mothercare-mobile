@@ -45,6 +45,16 @@ class SessionStorage {
 
   Future<String?> getAcademicYearId() => _storage.read(key: _kAcademicYearId);
 
+  Future<PushCryptoMaterial?> readPushCrypto() async {
+    final raw = await _storage.read(key: _kPush);
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      return PushCryptoMaterial.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<StoredSession?> readSession() async {
     final token = await getToken();
     if (token == null || token.isEmpty) return null;
