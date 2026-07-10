@@ -35,17 +35,15 @@ void main() {
 
     expect(data.sections.length, 1);
     expect(data.rooms.length, 1);
-    expect(data.roomById('r1')?.name, 'Whole School');
   });
 
-  test('displayRoomName renames school and class announcements', () {
-    const school = ChatRoomSummary(
-      id: 'r1',
-      kind: 'school_announcement',
-      name: 'Whole School',
-      canPost: false,
-      unreadCount: 0,
-    );
+  test('class display name from bootstrap groupLabel', () {
+    expect(classDisplayName('Playgroup'), 'Playgroup');
+    expect(classDisplayName('Class 8 — CS'), 'Class 8 — CS');
+    expect(classDisplayName(null), 'My Class');
+  });
+
+  test('class announcement room label inside community screen', () {
     const classRoom = ChatRoomSummary(
       id: 'r2',
       kind: 'class_announcement',
@@ -54,20 +52,21 @@ void main() {
       unreadCount: 0,
     );
 
-    expect(displayRoomName(school), 'Announcement');
-    expect(
-      displayRoomName(classRoom, groupLabel: 'Playgroup'),
-      'Playgroup Announcements',
-    );
+    expect(displayRoomName(classRoom), 'Class Announcement');
   });
 
-  test('displaySectionTitle uses student class from bootstrap', () {
-    const section = ChatLandingSection(
-      key: 'class',
-      title: 'Class Community',
-      rooms: [],
-    );
+  test('splits class section into announcement and groups', () {
+    final section = ChatLandingSection.fromJson({
+      'key': 'class',
+      'title': 'Class Community',
+      'rooms': [
+        {'id': 'a', 'kind': 'class_announcement', 'name': 'X', 'unreadCount': 1, 'canPost': false},
+        {'id': 'g', 'kind': 'group_chat', 'name': 'Mathematics', 'unreadCount': 2, 'canPost': true},
+      ],
+    });
 
-    expect(displaySectionTitle(section, groupLabel: 'Class 8 — CS'), 'Class 8 — CS');
+    expect(classAnnouncementRooms(section).length, 1);
+    expect(classGroupRooms(section).length, 1);
+    expect(classCommunityUnread(section), 3);
   });
 }

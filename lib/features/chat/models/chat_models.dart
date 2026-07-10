@@ -162,21 +162,37 @@ class ChatMessage {
   }
 }
 
+/// Student's class name from bootstrap, e.g. "Playgroup" or "Class 8 — CS".
+String classDisplayName(String? groupLabel) {
+  final label = groupLabel?.trim();
+  if (label != null && label.isNotEmpty) return label;
+  return 'My Class';
+}
+
 String displayRoomName(ChatRoomSummary room, {String? groupLabel}) {
   if (room.kind == 'school_announcement') return 'Announcement';
-  if (room.kind == 'class_announcement') {
-    final label = groupLabel?.trim();
-    if (label != null && label.isNotEmpty) return '$label Announcements';
-    return room.name;
-  }
+  if (room.kind == 'class_announcement') return 'Class Announcement';
   return room.name;
 }
 
 String displaySectionTitle(ChatLandingSection section, {String? groupLabel}) {
   if (section.key == 'school') return 'Announcement';
-  if (section.key == 'class') {
-    final label = groupLabel?.trim();
-    if (label != null && label.isNotEmpty) return label;
-  }
+  if (section.key == 'class') return classCommunityTitle(groupLabel);
   return section.title;
 }
+
+/// e.g. "Playgroup Community" from backend `groupLabel`.
+String classCommunityTitle(String? groupLabel) {
+  final label = groupLabel?.trim();
+  if (label != null && label.isNotEmpty) return '$label Community';
+  return 'Class Community';
+}
+
+List<ChatRoomSummary> classAnnouncementRooms(ChatLandingSection section) =>
+    section.rooms.where((r) => r.kind == 'class_announcement').toList();
+
+List<ChatRoomSummary> classGroupRooms(ChatLandingSection section) =>
+    section.rooms.where((r) => r.kind == 'group_chat').toList();
+
+int classCommunityUnread(ChatLandingSection section) =>
+    section.rooms.fold<int>(0, (sum, r) => sum + r.unreadCount);

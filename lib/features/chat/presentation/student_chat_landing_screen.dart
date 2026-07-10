@@ -8,9 +8,11 @@ import '../data/chat_api.dart';
 import '../data/chat_socket_service.dart';
 import '../models/chat_models.dart';
 import '../widgets/chat_room_tile.dart';
+import '../../../config/app_config.dart';
+import '../../../core/widgets/universal_header.dart';
 import '../widgets/room_list_icon.dart';
-import '../widgets/landing_header.dart';
 import 'chat_room_screen.dart';
+import 'class_community_screen.dart';
 
 class StudentChatLandingScreen extends StatefulWidget {
   const StudentChatLandingScreen({
@@ -85,36 +87,32 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
     ).then((_) => _load());
   }
 
-  void _showMenu() {
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (widget.groupLabel != null)
-              ListTile(
-                leading: const Icon(Icons.school_outlined),
-                title: Text(widget.groupLabel!),
-                subtitle: const Text('Your class'),
-              ),
-            ListTile(
-              leading: const Icon(Icons.logout_rounded),
-              title: const Text('Logout'),
-              onTap: () {
-                Navigator.pop(ctx);
-                widget.onLogout?.call();
-              },
-            ),
-          ],
+  void _openClassCommunity(ChatLandingSection section) {
+    final label = classDisplayName(widget.groupLabel);
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ClassCommunityScreen(
+          session: widget.session,
+          socket: widget.socket,
+          groupLabel: label,
+          section: section,
+          landing: _landing!,
         ),
       ),
-    );
+    ).then((_) => _load());
   }
 
   List<ChatLandingSection> get _visibleSections {
     final sections = _landing?.sections ?? [];
-    return sections.where((s) => s.key != 'school').toList();
+    return sections.where((s) => s.key != 'school' && s.key != 'class').toList();
+  }
+
+  ChatLandingSection? get _classSection {
+    final sections = _landing?.sections ?? [];
+    for (final s in sections) {
+      if (s.key == 'class') return s;
+    }
+    return null;
   }
 
   ChatRoomSummary? get _announcementRoom {
@@ -130,10 +128,7 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        LandingHeader(
-          onSearch: () {},
-          onMenu: _showMenu,
-        ),
+        UniversalHeader(title: AppConfig.appName),
         Expanded(child: _buildBody()),
       ],
     );
@@ -161,9 +156,11 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
     }
 
     final announcement = _announcementRoom;
+    final classSection = _classSection;
     final sections = _visibleSections;
+    final hasClass = classSection != null && classSection.rooms.isNotEmpty;
 
-    if (announcement == null && sections.isEmpty) {
+    if (announcement == null && !hasClass && sections.isEmpty) {
       return RefreshIndicator(
         onRefresh: _load,
         color: AppColors.violet,
@@ -184,36 +181,51 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.only(bottom: 8),
         children: [
-          if (announcement != null) _AnnouncementPinnedTile(room: announcement, onTap: () => _openRoom(announcement)),
-          ...sections.expand((section) => [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
-                  child: Text(
-                    displaySectionTitle(section, groupLabel: widget.groupLabel),
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textMuted,
-                      letterSpacing: 0.4,
-                    ),
-                  ),
-                ),
-                ...section.rooms.map(
-                  (room) => ChatRoomTile(
-                    room: room,
-                    displayName: displayRoomName(room, groupLabel: widget.groupLabel),
-                    onTap: () => _openRoom(room),
-                  ),
-                ),
-              ]),
+          if (announcement != null)
+            _SchoolAnnouncementTile(room: announcement, onTap: () => _openRoom(announcement)),
+          if (hasClass)
+            _ClassCommunityEntryTile(
+              title: classDisplayName(widget.groupLabel),
+              unread: classCommunityUnread(classSection),
+              onTap: () => _openClassCommunity(classSection),
+            ),
+          ...sections.expand(_buildGenericSection),
         ],
+      ),
+    );
+  }
+
+  List<Widget> _buildGenericSection(ChatLandingSection section) {
+    return [
+      _sectionHeading(displaySectionTitle(section, groupLabel: widget.groupLabel)),
+      ...section.rooms.map(
+        (room) => ChatRoomTile(
+          room: room,
+          displayName: displayRoomName(room, groupLabel: widget.groupLabel),
+          onTap: () => _openRoom(room),
+        ),
+      ),
+    ];
+  }
+
+  Widget _sectionHeading(String title) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+          color: AppColors.textMuted,
+          letterSpacing: 0.4,
+        ),
       ),
     );
   }
 }
 
-class _AnnouncementPinnedTile extends StatelessWidget {
-  const _AnnouncementPinnedTile({required this.room, required this.onTap});
+class _SchoolAnnouncementTile extends StatelessWidget {
+  const _SchoolAnnouncementTile({required this.room, required this.onTap});
 
   final ChatRoomSummary room;
   final VoidCallback onTap;
@@ -235,19 +247,7 @@ class _AnnouncementPinnedTile extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Row(
             children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: roomIconStyle(room).background,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  roomIconStyle(room).icon,
-                  color: roomIconStyle(room).foreground,
-                  size: 22,
-                ),
-              ),
+              RoomListIcon(room: room, size: 40),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -263,22 +263,98 @@ class _AnnouncementPinnedTile extends StatelessWidget {
                 ),
               ),
               if (room.unreadCount > 0)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppColors.violet,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    room.unreadCount > 99 ? '99+' : '${room.unreadCount}',
-                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
-                  ),
-                )
+                _UnreadBadge(count: room.unreadCount)
               else
                 const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ClassCommunityEntryTile extends StatelessWidget {
+  const _ClassCommunityEntryTile({
+    required this.title,
+    required this.unread,
+    required this.onTap,
+  });
+
+  final String title;
+  final int unread;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border(
+              left: BorderSide(color: AppColors.violet, width: 3),
+              bottom: const BorderSide(color: AppColors.border),
+            ),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8F4FF),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.groups_rounded, color: Color(0xFF2563EB), size: 24),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const Text(
+                      'Class community',
+                      style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+                    ),
+                  ],
+                ),
+              ),
+              if (unread > 0) _UnreadBadge(count: unread) else const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _UnreadBadge extends StatelessWidget {
+  const _UnreadBadge({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.violet,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        count > 99 ? '99+' : '$count',
+        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
       ),
     );
   }

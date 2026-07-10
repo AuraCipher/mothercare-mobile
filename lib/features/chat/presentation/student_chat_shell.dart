@@ -6,7 +6,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../auth/presentation/login_screen.dart';
 import '../../student/data/student_api.dart';
 import '../data/chat_socket_service.dart';
-import '../widgets/landing_header.dart';
+import '../../../core/widgets/universal_header.dart';
 import '../widgets/student_bottom_nav.dart';
 import 'student_chat_landing_screen.dart';
 import 'student_placeholder_tab.dart';
@@ -139,7 +139,7 @@ class _StudentChatShellState extends State<StudentChatShell> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const LandingHeader(),
+            const UniversalHeader(title: 'Academics'),
             Expanded(
               child: StudentPlaceholderTab(
                 title: 'Academics',
@@ -154,7 +154,7 @@ class _StudentChatShellState extends State<StudentChatShell> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const LandingHeader(),
+            const UniversalHeader(title: 'Profile'),
             Expanded(
               child: StudentPlaceholderTab(
                 title: 'Profile',

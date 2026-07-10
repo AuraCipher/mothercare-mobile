@@ -8,6 +8,7 @@ import '../../../core/storage/session_storage.dart';
 import '../../../core/theme/app_theme.dart';
 import '../data/chat_api.dart';
 import '../data/chat_socket_service.dart';
+import '../../../core/widgets/universal_header.dart';
 import '../models/chat_models.dart';
 
 class ChatRoomScreen extends StatefulWidget {
@@ -156,14 +157,13 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     final me = widget.session.payload.id;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(displayRoomName(widget.room, groupLabel: widget.groupLabel)),
-        backgroundColor: AppColors.background,
-        foregroundColor: AppColors.textPrimary,
-        elevation: 0,
-      ),
+      backgroundColor: AppColors.background,
       body: Column(
         children: [
+          UniversalHeader(
+            title: displayRoomName(widget.room, groupLabel: widget.groupLabel),
+            showBack: true,
+          ),
           if (!widget.room.canPost)
             Container(
               width: double.infinity,
