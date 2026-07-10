@@ -16,11 +16,13 @@ class ChatRoomScreen extends StatefulWidget {
     required this.session,
     required this.socket,
     required this.room,
+    this.groupLabel,
   });
 
   final StoredSession session;
   final ChatSocketService socket;
   final ChatRoomSummary room;
+  final String? groupLabel;
 
   @override
   State<ChatRoomScreen> createState() => _ChatRoomScreenState();
@@ -155,7 +157,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(displayRoomName(widget.room)),
+        title: Text(displayRoomName(widget.room, groupLabel: widget.groupLabel)),
         backgroundColor: AppColors.background,
         foregroundColor: AppColors.textPrimary,
         elevation: 0,

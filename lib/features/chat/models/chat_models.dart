@@ -162,31 +162,21 @@ class ChatMessage {
   }
 }
 
-String iconForRoomKind(String kind) {
-  switch (kind) {
-    case 'school_announcement':
-      return '📢';
-    case 'class_announcement':
-      return '📢';
-    case 'group_chat':
-      return '💬';
-    case 'system_attendance':
-      return '📋';
-    case 'system_payment':
-      return '💳';
-    case 'direct_message':
-      return '✉️';
-    default:
-      return '💬';
-  }
-}
-
-String displayRoomName(ChatRoomSummary room) {
+String displayRoomName(ChatRoomSummary room, {String? groupLabel}) {
   if (room.kind == 'school_announcement') return 'Announcement';
+  if (room.kind == 'class_announcement') {
+    final label = groupLabel?.trim();
+    if (label != null && label.isNotEmpty) return '$label Announcements';
+    return room.name;
+  }
   return room.name;
 }
 
-String displaySectionTitle(ChatLandingSection section) {
+String displaySectionTitle(ChatLandingSection section, {String? groupLabel}) {
   if (section.key == 'school') return 'Announcement';
+  if (section.key == 'class') {
+    final label = groupLabel?.trim();
+    if (label != null && label.isNotEmpty) return label;
+  }
   return section.title;
 }

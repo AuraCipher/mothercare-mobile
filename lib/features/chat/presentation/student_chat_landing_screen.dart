@@ -8,6 +8,7 @@ import '../data/chat_api.dart';
 import '../data/chat_socket_service.dart';
 import '../models/chat_models.dart';
 import '../widgets/chat_room_tile.dart';
+import '../widgets/room_list_icon.dart';
 import '../widgets/landing_header.dart';
 import 'chat_room_screen.dart';
 
@@ -78,6 +79,7 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
           session: widget.session,
           socket: widget.socket,
           room: full,
+          groupLabel: widget.groupLabel,
         ),
       ),
     ).then((_) => _load());
@@ -187,7 +189,7 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
                   child: Text(
-                    displaySectionTitle(section),
+                    displaySectionTitle(section, groupLabel: widget.groupLabel),
                     style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
@@ -199,7 +201,7 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
                 ...section.rooms.map(
                   (room) => ChatRoomTile(
                     room: room,
-                    displayName: displayRoomName(room),
+                    displayName: displayRoomName(room, groupLabel: widget.groupLabel),
                     onTap: () => _openRoom(room),
                   ),
                 ),
@@ -237,10 +239,14 @@ class _AnnouncementPinnedTile extends StatelessWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: AppColors.violet.withValues(alpha: 0.12),
+                  color: roomIconStyle(room).background,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(Icons.campaign_outlined, color: AppColors.violet, size: 22),
+                child: Icon(
+                  roomIconStyle(room).icon,
+                  color: roomIconStyle(room).foreground,
+                  size: 22,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(

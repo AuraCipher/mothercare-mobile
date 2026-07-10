@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../models/chat_models.dart';
+import 'room_list_icon.dart';
 
 class ChatRoomTile extends StatelessWidget {
   const ChatRoomTile({
@@ -30,16 +31,7 @@ class ChatRoomTile extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
             children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: AppColors.violet.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                alignment: Alignment.center,
-                child: Text(iconForRoomKind(room.kind), style: const TextStyle(fontSize: 20)),
-              ),
+              RoomListIcon(room: room),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(

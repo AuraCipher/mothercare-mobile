@@ -36,17 +36,38 @@ void main() {
     expect(data.sections.length, 1);
     expect(data.rooms.length, 1);
     expect(data.roomById('r1')?.name, 'Whole School');
-    expect(iconForRoomKind('group_chat'), '💬');
   });
 
-  test('displayRoomName renames school announcement', () {
-    const room = ChatRoomSummary(
+  test('displayRoomName renames school and class announcements', () {
+    const school = ChatRoomSummary(
       id: 'r1',
       kind: 'school_announcement',
       name: 'Whole School',
       canPost: false,
       unreadCount: 0,
     );
-    expect(displayRoomName(room), 'Announcement');
+    const classRoom = ChatRoomSummary(
+      id: 'r2',
+      kind: 'class_announcement',
+      name: 'Class 8 · CS Announcements',
+      canPost: false,
+      unreadCount: 0,
+    );
+
+    expect(displayRoomName(school), 'Announcement');
+    expect(
+      displayRoomName(classRoom, groupLabel: 'Playgroup'),
+      'Playgroup Announcements',
+    );
+  });
+
+  test('displaySectionTitle uses student class from bootstrap', () {
+    const section = ChatLandingSection(
+      key: 'class',
+      title: 'Class Community',
+      rooms: [],
+    );
+
+    expect(displaySectionTitle(section, groupLabel: 'Class 8 — CS'), 'Class 8 — CS');
   });
 }
