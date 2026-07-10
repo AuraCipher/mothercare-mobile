@@ -8,6 +8,8 @@ import '../../../core/storage/session_storage.dart';
 import '../data/auth_api.dart';
 import '../../home/presentation/role_home_screen.dart';
 import '../../chat/presentation/student_chat_shell.dart';
+import '../../chat/presentation/teacher_chat_shell.dart';
+import '../../chat/presentation/admin_staff_shell.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key, this.onLoggedIn});
@@ -93,6 +95,18 @@ class _LoginScreenState extends State<LoginScreen> {
       if (payload.role == 'student') {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => StudentChatShell(session: session)),
+        );
+        return;
+      }
+      if (payload.role == 'teacher') {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => TeacherChatShell(session: session)),
+        );
+        return;
+      }
+      if (isStaffAdminRole(payload.role)) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => AdminStaffShell(session: session)),
         );
         return;
       }

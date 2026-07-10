@@ -222,3 +222,19 @@ List<ChatRoomSummary> classGroupRooms(ChatLandingSection section) =>
 
 int classCommunityUnread(ChatLandingSection section) =>
     section.rooms.fold<int>(0, (sum, r) => sum + r.unreadCount);
+
+List<ChatLandingSection> groupRoomsForStaffLanding(List<ChatRoomSummary> rooms) {
+  List<ChatRoomSummary> pick(List<String> kinds) =>
+      rooms.where((r) => kinds.contains(r.kind)).toList();
+
+  return [
+    ChatLandingSection(key: 'school', title: 'School Announcement', rooms: pick(['school_announcement'])),
+    ChatLandingSection(
+      key: 'channels',
+      title: 'My Channels',
+      rooms: pick(['class_announcement', 'group_chat']),
+    ),
+    ChatLandingSection(key: 'system', title: 'Updates', rooms: pick(['system_attendance', 'system_payment'])),
+    ChatLandingSection(key: 'dm', title: 'Messages', rooms: pick(['direct_message'])),
+  ].where((s) => s.rooms.isNotEmpty).toList();
+}

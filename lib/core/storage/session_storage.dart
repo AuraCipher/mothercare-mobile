@@ -6,6 +6,8 @@ import '../auth/jwt_utils.dart';
 import '../../features/auth/models/auth_models.dart';
 import '../../features/student/models/student_bootstrap.dart';
 import '../../features/chat/models/chat_models.dart';
+import '../../features/teacher/models/teacher_bootstrap.dart';
+import '../../features/staff/models/staff_bootstrap.dart';
 
 const _kToken = 'mcs_auth_token';
 const _kUser = 'mcs_auth_user';
@@ -14,6 +16,8 @@ const _kBranchId = 'mcs_active_branch_id';
 const _kAcademicYearId = 'mcs_academic_year_id';
 const _kBootstrapCache = 'mcs_bootstrap_cache';
 const _kChatLandingCache = 'mcs_chat_landing_cache';
+const _kTeacherBootstrapCache = 'mcs_teacher_bootstrap_cache';
+const _kStaffBootstrapCache = 'mcs_staff_bootstrap_cache';
 
 class SessionStorage {
   SessionStorage({FlutterSecureStorage? storage})
@@ -65,6 +69,8 @@ class SessionStorage {
     await _storage.delete(key: _kAcademicYearId);
     await _storage.delete(key: _kBootstrapCache);
     await _storage.delete(key: _kChatLandingCache);
+    await _storage.delete(key: _kTeacherBootstrapCache);
+    await _storage.delete(key: _kStaffBootstrapCache);
   }
 
   Future<void> saveBootstrapCache(StudentBootstrap bootstrap) async {
@@ -90,6 +96,34 @@ class SessionStorage {
     if (raw == null || raw.isEmpty) return null;
     try {
       return ChatLandingData.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> saveTeacherBootstrapCache(TeacherBootstrap bootstrap) async {
+    await _storage.write(key: _kTeacherBootstrapCache, value: jsonEncode(bootstrap.toJson()));
+  }
+
+  Future<TeacherBootstrap?> readTeacherBootstrapCache() async {
+    final raw = await _storage.read(key: _kTeacherBootstrapCache);
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      return TeacherBootstrap.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> saveStaffBootstrapCache(StaffBootstrap bootstrap) async {
+    await _storage.write(key: _kStaffBootstrapCache, value: jsonEncode(bootstrap.toJson()));
+  }
+
+  Future<StaffBootstrap?> readStaffBootstrapCache() async {
+    final raw = await _storage.read(key: _kStaffBootstrapCache);
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      return StaffBootstrap.fromJson(jsonDecode(raw) as Map<String, dynamic>);
     } catch (_) {
       return null;
     }

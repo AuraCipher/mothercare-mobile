@@ -4,33 +4,33 @@ import '../../../config/app_config.dart';
 import '../../../core/api/api_exception.dart';
 import '../../../core/storage/session_storage.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../auth/presentation/login_screen.dart';
-import '../../student/data/student_api.dart';
-import '../../student/models/student_bootstrap.dart';
-import '../data/chat_socket_service.dart';
-import '../widgets/student_bottom_nav.dart';
 import '../../../core/widgets/universal_header.dart';
-import 'student_chat_landing_screen.dart';
-import 'student_placeholder_tab.dart';
+import '../../auth/presentation/login_screen.dart';
+import '../../teacher/data/teacher_api.dart';
+import '../../teacher/models/teacher_bootstrap.dart';
+import '../data/chat_socket_service.dart';
+import '../widgets/portal_bottom_nav.dart';
+import 'portal_profile_tab.dart';
+import 'staff_chat_landing_screen.dart';
+import 'teacher_classes_tab.dart';
 
-/// Student home — bootstrap, socket, bottom nav, chat landing.
-class StudentChatShell extends StatefulWidget {
-  const StudentChatShell({super.key, required this.session});
+class TeacherChatShell extends StatefulWidget {
+  const TeacherChatShell({super.key, required this.session});
 
   final StoredSession session;
 
   @override
-  State<StudentChatShell> createState() => _StudentChatShellState();
+  State<TeacherChatShell> createState() => _TeacherChatShellState();
 }
 
-class _StudentChatShellState extends State<StudentChatShell> {
-  final _studentApi = StudentApi();
+class _TeacherChatShellState extends State<TeacherChatShell> {
+  final _teacherApi = TeacherApi();
   final _sessionStorage = SessionStorage();
   final _socket = ChatSocketService();
-  StudentBootstrap? _bootstrap;
+  TeacherBootstrap? _bootstrap;
   String? _error;
   bool _loading = true;
-  StudentNavTab _tab = StudentNavTab.chats;
+  PortalNavTab _tab = PortalNavTab.chats;
 
   @override
   void initState() {
@@ -44,11 +44,8 @@ class _StudentChatShellState extends State<StudentChatShell> {
     super.dispose();
   }
 
-  void _applyBootstrap(StudentBootstrap data) {
-    _socket.connect(
-      token: widget.session.token,
-      academicYearId: data.academicYearId,
-    );
+  void _applyBootstrap(TeacherBootstrap data) {
+    _socket.connect(token: widget.session.token, academicYearId: data.academicYearId);
     setState(() {
       _bootstrap = data;
       _loading = false;
@@ -57,7 +54,7 @@ class _StudentChatShellState extends State<StudentChatShell> {
   }
 
   Future<void> _loadBootstrap() async {
-    final cached = await _sessionStorage.readBootstrapCache();
+    final cached = await _sessionStorage.readTeacherBootstrapCache();
     if (cached != null && cached.academicYearId.isNotEmpty && mounted) {
       await _sessionStorage.saveAcademicYearId(cached.academicYearId);
       _applyBootstrap(cached);
@@ -69,12 +66,9 @@ class _StudentChatShellState extends State<StudentChatShell> {
     }
 
     try {
-      final data = await _studentApi.fetchBootstrap(token: widget.session.token);
-      if (data.academicYearId.isEmpty) {
-        throw ApiException('No active academic year');
-      }
+      final data = await _teacherApi.fetchBootstrap(token: widget.session.token);
       await _sessionStorage.saveAcademicYearId(data.academicYearId);
-      await _sessionStorage.saveBootstrapCache(data);
+      await _sessionStorage.saveTeacherBootstrapCache(data);
       if (!mounted) return;
       _applyBootstrap(data);
     } on ApiException catch (e) {
@@ -89,7 +83,7 @@ class _StudentChatShellState extends State<StudentChatShell> {
       if (!mounted) return;
       if (_bootstrap == null) {
         setState(() {
-          _error = 'Could not start chat. Check your connection.';
+          _error = 'Could not load teacher portal. Check your connection.';
           _loading = false;
         });
       }
@@ -102,6 +96,39 @@ class _StudentChatShellState extends State<StudentChatShell> {
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LoginScreen()),
       (_) => false,
+    );
+  }
+
+  void _showMenu() {
+    final bootstrap = _bootstrap;
+    if (bootstrap == null) return;
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.school_outlined),
+              title: Text(bootstrap.branchName),
+              subtitle: Text(bootstrap.academicYearLabel),
+            ),
+            ListTile(
+              leading: const Icon(Icons.badge_outlined),
+              title: Text(bootstrap.userName),
+              subtitle: Text('${bootstrap.assignmentCount} assignments'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.logout_rounded),
+              title: const Text('Logout'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _logout();
+              },
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -138,7 +165,7 @@ class _StudentChatShellState extends State<StudentChatShell> {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(top: false, bottom: false, child: _buildTabBody()),
-      bottomNavigationBar: StudentBottomNav(
+      bottomNavigationBar: PortalBottomNav(
         current: _tab,
         onChanged: (tab) => setState(() => _tab = tab),
       ),
@@ -148,44 +175,42 @@ class _StudentChatShellState extends State<StudentChatShell> {
   Widget _buildTabBody() {
     final bootstrap = _bootstrap!;
     switch (_tab) {
-      case StudentNavTab.chats:
-        return StudentChatLandingScreen(
+      case PortalNavTab.chats:
+        return StaffChatLandingScreen(
           session: widget.session,
           socket: _socket,
-          bootstrap: bootstrap,
-          onLogout: _logout,
+          headerTitle: bootstrap.branchName,
+          academicYearId: bootstrap.academicYearId,
+          onMenu: _showMenu,
         );
-      case StudentNavTab.academics:
+      case PortalNavTab.workspace:
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             UniversalHeader(
-              title: bootstrap.academicYearLabel,
-              subtitle: bootstrap.branchName,
+              title: 'My Classes',
+              subtitle: bootstrap.academicYearLabel,
             ),
-            Expanded(
-              child: StudentPlaceholderTab(
-                bootstrap: bootstrap,
-                message: 'Fees, attendance, results, and timetable — coming in Phase 2.',
-                icon: Icons.menu_book_outlined,
-              ),
-            ),
+            Expanded(child: TeacherClassesTab(bootstrap: bootstrap)),
           ],
         );
-      case StudentNavTab.profile:
+      case PortalNavTab.profile:
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             UniversalHeader(
               title: bootstrap.userName,
-              subtitle: bootstrap.groupLabel,
+              subtitle: bootstrap.isHod ? 'Head of Department' : 'Teacher',
             ),
             Expanded(
-              child: StudentPlaceholderTab(
-                bootstrap: bootstrap,
-                message: 'Your school profile and settings.',
-                icon: Icons.person_outline_rounded,
-                showLogout: true,
+              child: PortalProfileTab(
+                userName: bootstrap.userName,
+                branchName: bootstrap.branchName,
+                academicYearLabel: bootstrap.academicYearLabel,
+                roleLabel: bootstrap.isHod ? 'Teacher · HOD' : 'Teacher',
+                extraLines: [
+                  if (bootstrap.portalAccess != 'FULL') 'Portal access: ${bootstrap.portalAccess}',
+                ],
                 onLogout: _logout,
               ),
             ),

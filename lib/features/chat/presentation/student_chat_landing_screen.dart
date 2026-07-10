@@ -11,6 +11,7 @@ import '../../student/models/student_bootstrap.dart';
 import '../widgets/chat_room_tile.dart';
 import '../../../config/app_config.dart';
 import '../widgets/landing_header.dart';
+import '../../../core/widgets/offline_banner.dart';
 import '../widgets/room_list_icon.dart';
 import 'chat_room_screen.dart';
 import 'class_community_screen.dart';
@@ -20,16 +21,14 @@ class StudentChatLandingScreen extends StatefulWidget {
     super.key,
     required this.session,
     required this.socket,
-    required this.bootstrap,
+    required     this.bootstrap,
     this.onLogout,
-    this.onOfflineChanged,
   });
 
   final StoredSession session;
   final ChatSocketService socket;
   final StudentBootstrap bootstrap;
   final VoidCallback? onLogout;
-  final ValueChanged<bool>? onOfflineChanged;
 
   @override
   State<StudentChatLandingScreen> createState() => _StudentChatLandingScreenState();
@@ -41,6 +40,7 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
   ChatLandingData? _landing;
   String? _error;
   bool _loading = true;
+  bool _offline = false;
 
   @override
   void initState() {
@@ -56,7 +56,6 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
         _loading = false;
         _error = null;
       });
-      widget.onOfflineChanged?.call(true);
     } else if (mounted) {
       setState(() {
         _loading = true;
@@ -71,13 +70,13 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
       setState(() {
         _landing = landing;
         _loading = false;
+        _offline = false;
         _error = null;
       });
-      widget.onOfflineChanged?.call(false);
     } on ApiException catch (e) {
       if (!mounted) return;
       if (_landing != null) {
-        widget.onOfflineChanged?.call(true);
+        setState(() => _offline = true);
       } else {
         setState(() {
           _error = e.message;
@@ -87,7 +86,7 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
     } catch (_) {
       if (!mounted) return;
       if (_landing != null) {
-        widget.onOfflineChanged?.call(true);
+        setState(() => _offline = true);
       } else {
         setState(() {
           _error = 'Could not load chat. Pull to refresh.';
@@ -196,6 +195,7 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
           onSearch: () {},
           onMenu: _showMenu,
         ),
+        if (_offline) const OfflineBanner(),
         Expanded(child: _buildBody()),
       ],
     );

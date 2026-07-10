@@ -12,6 +12,25 @@ class ChatApi {
     return ChatLandingData.fromJson(data);
   }
 
+  Future<ChatLandingData> fetchStaffLanding({
+    required String token,
+    required String academicYearId,
+  }) async {
+    final body = await _client.getJson(
+      '/chat/rooms',
+      token: token,
+      query: {'academicYearId': academicYearId},
+    );
+    final roomsRaw = body['data'] as List<dynamic>? ?? [];
+    final rooms = roomsRaw
+        .map((e) => ChatRoomSummary.fromJson(e as Map<String, dynamic>))
+        .toList();
+    return ChatLandingData(
+      sections: groupRoomsForStaffLanding(rooms),
+      rooms: rooms,
+    );
+  }
+
   Future<List<ChatMessage>> fetchMessages({
     required String token,
     required String roomId,

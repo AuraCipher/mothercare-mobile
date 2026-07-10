@@ -5,6 +5,8 @@ import 'core/theme/app_theme.dart';
 import 'core/storage/session_storage.dart';
 import 'core/auth/jwt_utils.dart';
 import 'features/chat/presentation/student_chat_shell.dart';
+import 'features/chat/presentation/teacher_chat_shell.dart';
+import 'features/chat/presentation/admin_staff_shell.dart';
 import 'features/auth/presentation/login_screen.dart';
 import 'features/home/presentation/role_home_screen.dart';
 
@@ -69,6 +71,12 @@ class _AuthGateState extends State<AuthGate> {
       }
       if (role == 'student') {
         return StudentChatShell(session: _session!);
+      }
+      if (role == 'teacher') {
+        return TeacherChatShell(session: _session!);
+      }
+      if (isStaffAdminRole(role)) {
+        return AdminStaffShell(session: _session!);
       }
       return RoleHomeScreen(session: _session!);
     }

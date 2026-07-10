@@ -71,6 +71,29 @@ void main() {
     expect(classCommunityUnread(section), 3);
   });
 
+  test('staff landing groups school announcement section', () {
+    final rooms = [
+      const ChatRoomSummary(
+        id: 'r1',
+        kind: 'school_announcement',
+        name: 'School Announcement',
+        canPost: false,
+        unreadCount: 1,
+      ),
+      const ChatRoomSummary(
+        id: 'r2',
+        kind: 'group_chat',
+        name: 'Mathematics',
+        canPost: true,
+        unreadCount: 0,
+      ),
+    ];
+
+    final sections = groupRoomsForStaffLanding(rooms);
+    expect(sections.length, 2);
+    expect(sections.first.title, 'School Announcement');
+  });
+
   test('normalizeChatLabel renames legacy Whole School', () {
     expect(normalizeChatLabel('Whole School'), 'School Announcement');
     expect(normalizeChatLabel('Mathematics'), 'Mathematics');
