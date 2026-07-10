@@ -2,7 +2,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:mobile/testing/e2e_keys.dart';
 
-import 'support/e2e_config.dart';
 import 'support/e2e_harness.dart';
 
 /// Runs against a real backend with demo seed:
