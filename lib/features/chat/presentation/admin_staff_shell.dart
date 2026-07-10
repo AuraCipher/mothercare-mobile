@@ -11,7 +11,7 @@ import '../../staff/models/staff_bootstrap.dart';
 import '../data/chat_socket_service.dart';
 import '../widgets/portal_bottom_nav.dart';
 import 'portal_profile_tab.dart';
-import 'admin_chat_landing_screen.dart';
+import 'portal_chat_landing_screen.dart';
 
 class AdminStaffShell extends StatefulWidget {
   const AdminStaffShell({super.key, required this.session});
@@ -175,7 +175,8 @@ class _AdminStaffShellState extends State<AdminStaffShell> {
     final bootstrap = _bootstrap!;
     switch (_tab) {
       case PortalNavTab.chats:
-        return AdminChatLandingScreen(
+        return PortalChatLandingScreen(
+          kind: PortalChatKind.admin,
           session: widget.session,
           socket: _socket,
           headerTitle: bootstrap.branchName,

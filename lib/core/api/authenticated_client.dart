@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import '../../config/app_config.dart';
 import 'api_exception.dart';
+import 'progress_file_stream.dart';
 
 class AuthenticatedClient {
   AuthenticatedClient({http.Client? client, String? baseUrl})
@@ -93,6 +94,7 @@ class AuthenticatedClient {
     required File file,
     required String fileName,
     required Map<String, String> fields,
+    void Function(double progress)? onProgress,
   }) async {
     final uri = Uri.parse('$_baseUrl$path');
     try {
@@ -100,9 +102,20 @@ class AuthenticatedClient {
       request.headers['Authorization'] = 'Bearer $token';
       request.headers['Accept'] = 'application/json';
       request.fields.addAll(fields);
-      request.files.add(await http.MultipartFile.fromPath('file', file.path, filename: fileName));
 
-      final streamed = await request.send().timeout(const Duration(seconds: 60));
+      final total = await file.length();
+      final byteStream = onProgress == null
+          ? http.ByteStream(file.openRead())
+          : http.ByteStream(fileUploadStream(file, onProgress));
+
+      request.files.add(http.MultipartFile(
+        'file',
+        byteStream,
+        total,
+        filename: fileName,
+      ));
+
+      final streamed = await request.send().timeout(const Duration(minutes: 10));
       final res = await http.Response.fromStream(streamed);
       return _decode(res);
     } on TimeoutException {

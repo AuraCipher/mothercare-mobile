@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
+import 'package:video_player/video_player.dart';
 
 import '../../../config/app_config.dart';
 import '../../../core/api/api_exception.dart';
@@ -16,6 +17,9 @@ import '../data/chat_socket_service.dart';
 import '../data/upload_api.dart';
 import '../../../core/widgets/universal_header.dart';
 import '../models/chat_models.dart';
+import '../models/pending_outgoing_message.dart';
+import '../widgets/chat_video_bubble.dart';
+import '../widgets/pending_message_bubble.dart';
 
 class ChatRoomScreen extends StatefulWidget {
   const ChatRoomScreen({
@@ -48,6 +52,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   final _scrollController = ScrollController();
 
   final List<ChatMessage> _messages = [];
+  final List<PendingOutgoingMessage> _pending = [];
   bool _loading = true;
   bool _loadingMore = false;
   bool _sending = false;
@@ -79,7 +84,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   void _onSocketMessage(ChatMessage message) {
     if (message.roomId != widget.room.id) return;
     if (_messages.any((m) => m.id == message.id)) return;
-    setState(() => _messages.add(message));
+    setState(() {
+      _messages.add(message);
+      if (_pending.isNotEmpty) _pending.removeAt(0);
+    });
     widget.socket.markRead(roomId: widget.room.id, messageId: message.id);
     _scrollToBottom();
   }
@@ -156,20 +164,46 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     if (mounted) setState(() => _sending = false);
   }
 
+  Future<double?> _videoDurationSeconds(File file) async {
+    final controller = VideoPlayerController.file(file);
+    try {
+      await controller.initialize();
+      return controller.value.duration.inMilliseconds / 1000.0;
+    } catch (_) {
+      return null;
+    } finally {
+      await controller.dispose();
+    }
+  }
+
   Future<void> _sendMedia({
     required File file,
     required String fileName,
     required String purpose,
     required String messageType,
+    String? durationSeconds,
+    String? previewLabel,
   }) async {
     final ayId = widget.academicYearId;
     if (ayId == null || ayId.isEmpty) {
       _showError('Academic year is required for attachments');
       return;
     }
-    if (_sending || !widget.room.canPost) return;
+    if (!widget.room.canPost) return;
 
-    setState(() => _sending = true);
+    final localId = 'local-${DateTime.now().millisecondsSinceEpoch}';
+    final pending = PendingOutgoingMessage(
+      localId: localId,
+      type: messageType,
+      previewLabel: previewLabel,
+      localFilePath: file.path,
+    );
+    setState(() {
+      _pending.add(pending);
+      _sending = true;
+    });
+    _scrollToBottom();
+
     try {
       final uploaded = await _uploadApi.uploadChatFile(
         token: widget.session.token,
@@ -178,19 +212,47 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         roomId: widget.room.id,
         academicYearId: ayId,
         purpose: purpose,
+        durationSeconds: durationSeconds,
+        onProgress: (p) {
+          if (!mounted) return;
+          setState(() {
+            final idx = _pending.indexWhere((m) => m.localId == localId);
+            if (idx >= 0) {
+              _pending[idx] = _pending[idx].copyWith(progress: p);
+            }
+          });
+        },
       );
+      if (!mounted) return;
+      setState(() {
+        final idx = _pending.indexWhere((m) => m.localId == localId);
+        if (idx >= 0) {
+          _pending[idx] = _pending[idx].copyWith(progress: 1, phase: PendingSendPhase.sending);
+        }
+      });
       widget.socket.sendMessage(
         roomId: widget.room.id,
         type: messageType,
         mediaFileId: uploaded.id,
       );
     } on ApiException catch (e) {
+      _markPendingFailed(localId);
       _showError(e.message);
     } catch (_) {
+      _markPendingFailed(localId);
       _showError('Failed to upload attachment');
     } finally {
       if (mounted) setState(() => _sending = false);
     }
+  }
+
+  void _markPendingFailed(String localId) {
+    setState(() {
+      final idx = _pending.indexWhere((m) => m.localId == localId);
+      if (idx >= 0) {
+        _pending[idx] = _pending[idx].copyWith(phase: PendingSendPhase.failed);
+      }
+    });
   }
 
   void _showError(String message) {
@@ -207,6 +269,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       fileName: picked.name,
       purpose: 'chat',
       messageType: 'image',
+      previewLabel: 'Photo',
     );
   }
 
@@ -214,11 +277,22 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     final picked = await _picker.pickVideo(source: ImageSource.gallery);
     if (picked == null) return;
     final file = File(picked.path);
+    final duration = await _videoDurationSeconds(file);
+    if (duration == null) {
+      _showError('Could not read video file');
+      return;
+    }
+    if (duration > 120) {
+      _showError('Videos must be 2 minutes or shorter');
+      return;
+    }
     await _sendMedia(
       file: file,
       fileName: picked.name,
       purpose: 'video',
       messageType: 'video',
+      durationSeconds: duration.toStringAsFixed(1),
+      previewLabel: 'Video',
     );
   }
 
@@ -233,6 +307,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         fileName: 'voice_${DateTime.now().millisecondsSinceEpoch}.m4a',
         purpose: 'voice_note',
         messageType: 'voice_note',
+        previewLabel: 'Voice message',
       );
       return;
     }
@@ -370,7 +445,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         ),
       );
     }
-    if (_messages.isEmpty) {
+    if (_messages.isEmpty && _pending.isEmpty) {
       return const Center(
         child: Text('No messages yet', style: TextStyle(color: AppColors.textMuted)),
       );
@@ -380,15 +455,21 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       controller: _scrollController,
       reverse: true,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      itemCount: _messages.length + (_loadingMore ? 1 : 0),
+      itemCount: _messages.length + _pending.length + (_loadingMore ? 1 : 0),
       itemBuilder: (context, index) {
-        if (_loadingMore && index == _messages.length) {
+        if (_loadingMore && index == _messages.length + _pending.length) {
           return const Padding(
             padding: EdgeInsets.all(12),
             child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
           );
         }
-        final message = _messages[_messages.length - 1 - index];
+        final pendingCount = _pending.length;
+        if (index < pendingCount) {
+          final pending = _pending[pendingCount - 1 - index];
+          return PendingMessageBubble(pending: pending);
+        }
+        final msgIndex = index - pendingCount;
+        final message = _messages[_messages.length - 1 - msgIndex];
         final isMine = message.sender.id == myUserId;
         return _MessageBubble(
           message: message,
@@ -509,14 +590,16 @@ class _MessageBubble extends StatelessWidget {
                     ),
                   )
                 else if (message.mediaFile?.isVideo == true || message.type == 'video')
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.videocam_rounded, color: fg, size: 20),
-                      const SizedBox(width: 8),
-                      Text('Video', style: TextStyle(color: fg, fontWeight: FontWeight.w600)),
-                    ],
-                  )
+                  mediaUrl.isNotEmpty
+                      ? ChatVideoBubble(url: mediaUrl, authToken: authToken)
+                      : Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.videocam_rounded, color: fg, size: 20),
+                            const SizedBox(width: 8),
+                            Text('Video', style: TextStyle(color: fg, fontWeight: FontWeight.w600)),
+                          ],
+                        )
                 else if (message.mediaFile?.isAudio == true || message.type == 'voice_note' || message.type == 'audio')
                   Row(
                     mainAxisSize: MainAxisSize.min,

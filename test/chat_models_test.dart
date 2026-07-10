@@ -112,4 +112,84 @@ void main() {
     expect(bootstrap.groupLabel, 'Playgroup');
     expect(bootstrap.academicYearLabel, '2025-2026');
   });
+
+  test('teacher landing parses communities and contacts', () {
+    final data = ChatLandingData.fromJson({
+      'sections': [
+        {
+          'key': 'classes',
+          'title': 'My Classes',
+          'communities': [
+            {
+              'groupId': 'g1',
+              'groupLabel': 'Playgroup — A',
+              'displayOrder': 1,
+              'section': 'A',
+              'unreadCount': 3,
+              'rooms': [
+                {
+                  'id': 'class-room',
+                  'kind': 'class_announcement',
+                  'name': 'Playgroup Announcements',
+                  'unreadCount': 1,
+                  'canPost': true,
+                },
+                {
+                  'id': 'math-room',
+                  'kind': 'group_chat',
+                  'name': 'Mathematics',
+                  'unreadCount': 2,
+                  'canPost': true,
+                },
+              ],
+            },
+          ],
+        },
+        {
+          'key': 'contacts',
+          'title': 'Contacts',
+          'contacts': [
+            {
+              'userId': 'admin-1',
+              'name': 'Principal',
+              'role': 'management',
+              'branchRole': 'branch_admin',
+            },
+          ],
+        },
+      ],
+      'rooms': [],
+      'communities': [
+        {
+          'groupId': 'g1',
+          'groupLabel': 'Playgroup — A',
+          'displayOrder': 1,
+          'section': 'A',
+          'unreadCount': 3,
+          'rooms': [
+            {
+              'id': 'class-room',
+              'kind': 'class_announcement',
+              'name': 'Playgroup Announcements',
+              'unreadCount': 1,
+              'canPost': true,
+            },
+          ],
+        },
+      ],
+      'contacts': [
+        {
+          'userId': 'admin-1',
+          'name': 'Principal',
+          'role': 'management',
+          'branchRole': 'branch_admin',
+        },
+      ],
+    });
+
+    expect(data.communities.length, 1);
+    expect(data.communities.first.groupLabel, 'Playgroup — A');
+    expect(data.contacts.first.roleLabel, 'Principal');
+    expect(data.sections.where((s) => s.key == 'classes').first.communities?.length, 1);
+  });
 }

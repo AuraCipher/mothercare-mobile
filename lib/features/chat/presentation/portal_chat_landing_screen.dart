@@ -13,36 +13,43 @@ import '../widgets/room_list_icon.dart';
 import 'chat_room_screen.dart';
 import 'class_community_screen.dart';
 
-/// Admin branch chat home — School → Teachers → Class communities → Contacts.
-class AdminChatLandingScreen extends StatefulWidget {
-  const AdminChatLandingScreen({
+enum PortalChatKind { admin, teacher }
+
+/// Staff portal chat home — School → Teachers → Classes → Contacts.
+class PortalChatLandingScreen extends StatefulWidget {
+  const PortalChatLandingScreen({
     super.key,
+    required this.kind,
     required this.session,
     required this.socket,
     required this.headerTitle,
-    required this.branchId,
     required this.academicYearId,
+    this.branchId,
     this.onMenu,
   });
 
+  final PortalChatKind kind;
   final StoredSession session;
   final ChatSocketService socket;
   final String headerTitle;
-  final String branchId;
   final String academicYearId;
+  final String? branchId;
   final VoidCallback? onMenu;
 
   @override
-  State<AdminChatLandingScreen> createState() => _AdminChatLandingScreenState();
+  State<PortalChatLandingScreen> createState() => _PortalChatLandingScreenState();
 }
 
-class _AdminChatLandingScreenState extends State<AdminChatLandingScreen> {
+class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
   final _chatApi = ChatApi();
   final _sessionStorage = SessionStorage();
   ChatLandingData? _landing;
   String? _error;
   bool _loading = true;
   bool _offline = false;
+
+  String get _classesTitle =>
+      widget.kind == PortalChatKind.teacher ? 'My Classes' : 'Class Communities';
 
   @override
   void initState() {
@@ -66,11 +73,16 @@ class _AdminChatLandingScreenState extends State<AdminChatLandingScreen> {
     }
 
     try {
-      final landing = await _chatApi.fetchAdminLanding(
-        token: widget.session.token,
-        branchId: widget.branchId,
-        academicYearId: widget.academicYearId,
-      );
+      final ChatLandingData landing;
+      if (widget.kind == PortalChatKind.admin) {
+        landing = await _chatApi.fetchAdminLanding(
+          token: widget.session.token,
+          branchId: widget.branchId!,
+          academicYearId: widget.academicYearId,
+        );
+      } else {
+        landing = await _chatApi.fetchTeacherLanding(token: widget.session.token);
+      }
       await _sessionStorage.saveChatLandingCache(landing);
       if (!mounted) return;
       setState(() {
@@ -104,6 +116,7 @@ class _AdminChatLandingScreenState extends State<AdminChatLandingScreen> {
 
   void _openRoom(ChatRoomSummary room) {
     final full = _landing?.roomById(room.id) ?? room;
+    final branchId = widget.branchId;
     Navigator.of(context)
         .push(
       MaterialPageRoute(
@@ -112,7 +125,7 @@ class _AdminChatLandingScreenState extends State<AdminChatLandingScreen> {
           socket: widget.socket,
           room: full,
           academicYearId: widget.academicYearId,
-          branchId: widget.branchId,
+          branchId: branchId,
         ),
       ),
     )
@@ -150,11 +163,17 @@ class _AdminChatLandingScreenState extends State<AdminChatLandingScreen> {
               canPost: true,
               unreadCount: 0,
             );
-      } else {
+      } else if (widget.kind == PortalChatKind.admin) {
         room = await _chatApi.openDirectMessage(
           token: widget.session.token,
-          branchId: widget.branchId,
+          branchId: widget.branchId!,
           academicYearId: widget.academicYearId,
+          participantUserId: contact.userId,
+          contactName: contact.name,
+        );
+      } else {
+        room = await _chatApi.openTeacherDirectMessage(
+          token: widget.session.token,
           participantUserId: contact.userId,
           contactName: contact.name,
         );
@@ -247,19 +266,14 @@ class _AdminChatLandingScreenState extends State<AdminChatLandingScreen> {
               accent: AppColors.violet.withValues(alpha: 0.04),
             ),
           if (communities.isNotEmpty) ...[
-            const _SectionHeader(title: 'Class Communities'),
+            _SectionHeader(title: _classesTitle),
             ...communities.map(
-              (c) => _ClassCommunityRow(
-                community: c,
-                onTap: () => _openClassCommunity(c),
-              ),
+              (c) => _ClassCommunityRow(community: c, onTap: () => _openClassCommunity(c)),
             ),
           ],
           if (contacts.isNotEmpty) ...[
             const _SectionHeader(title: 'Contacts'),
-            ...contacts.map(
-              (c) => _ContactRow(contact: c, onTap: () => _openContact(c)),
-            ),
+            ...contacts.map((c) => _ContactRow(contact: c, onTap: () => _openContact(c))),
           ],
           if (school == null && teachers == null && communities.isEmpty && contacts.isEmpty)
             const Padding(

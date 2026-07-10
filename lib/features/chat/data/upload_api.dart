@@ -14,18 +14,23 @@ class UploadApi {
     required String roomId,
     required String academicYearId,
     required String purpose,
+    String? durationSeconds,
+    void Function(double progress)? onProgress,
   }) async {
+    final fields = {
+      'purpose': purpose,
+      'entityType': 'chat',
+      'roomId': roomId,
+      'academicYearId': academicYearId,
+      if (durationSeconds != null) 'durationSeconds': durationSeconds,
+    };
     final body = await _client.uploadMultipart(
       '/api/upload',
       token: token,
       file: file,
       fileName: fileName,
-      fields: {
-        'purpose': purpose,
-        'entityType': 'chat',
-        'roomId': roomId,
-        'academicYearId': academicYearId,
-      },
+      fields: fields,
+      onProgress: onProgress,
     );
     final data = body['data'] as Map<String, dynamic>? ?? {};
     return UploadedFile.fromJson(data);

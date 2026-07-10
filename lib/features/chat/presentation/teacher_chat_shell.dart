@@ -11,7 +11,7 @@ import '../../teacher/models/teacher_bootstrap.dart';
 import '../data/chat_socket_service.dart';
 import '../widgets/portal_bottom_nav.dart';
 import 'portal_profile_tab.dart';
-import 'staff_chat_landing_screen.dart';
+import 'portal_chat_landing_screen.dart';
 import 'teacher_classes_tab.dart';
 
 class TeacherChatShell extends StatefulWidget {
@@ -176,10 +176,12 @@ class _TeacherChatShellState extends State<TeacherChatShell> {
     final bootstrap = _bootstrap!;
     switch (_tab) {
       case PortalNavTab.chats:
-        return StaffChatLandingScreen(
+        return PortalChatLandingScreen(
+          kind: PortalChatKind.teacher,
           session: widget.session,
           socket: _socket,
           headerTitle: bootstrap.branchName,
+          branchId: bootstrap.branchId,
           academicYearId: bootstrap.academicYearId,
           onMenu: _showMenu,
         );
