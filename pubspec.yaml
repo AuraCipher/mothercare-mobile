@@ -55,15 +55,17 @@ flutter_launcher_icons:
 
 flutter_native_splash:
   color: "#FFFFFF"
-  image: assets/bgless_logo.png
+  image: assets/splash_logo.png
   android_gravity: center
   ios_content_mode: scaleAspectFit
   android_12:
     color: "#FFFFFF"
-    image: assets/bgless_logo.png
+    image: assets/splash_logo.png
+    icon_background_color: "#FFFFFF"
 
 flutter:
   uses-material-design: true
   assets:
     - assets/logo.png
     - assets/bgless_logo.png
+    - assets/splash_logo.png

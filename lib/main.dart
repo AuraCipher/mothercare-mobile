@@ -63,14 +63,21 @@ class _AuthGateState extends State<AuthGate> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(
+      return Scaffold(
+        backgroundColor: Colors.white,
         body: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              AppLogo(size: 88, borderRadius: 20),
-              SizedBox(height: 24),
-              CircularProgressIndicator(color: AppColors.violet),
+              AppLogo(
+                size: 112,
+                borderRadius: 0,
+                showBackground: false,
+                asset: AppAssets.bglessLogo,
+                fit: BoxFit.contain,
+              ),
+              const SizedBox(height: 24),
+              const CircularProgressIndicator(color: AppColors.violet),
             ],
           ),
         ),
