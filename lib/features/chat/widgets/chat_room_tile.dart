@@ -11,11 +11,13 @@ class ChatRoomTile extends StatelessWidget {
     required this.room,
     required this.onTap,
     this.displayName,
+    this.subtitle,
   });
 
   final ChatRoomSummary room;
   final VoidCallback onTap;
   final String? displayName;
+  final String? subtitle;
 
   @override
   Widget build(BuildContext context) {
@@ -45,7 +47,13 @@ class ChatRoomTile extends StatelessWidget {
                         fontSize: 15,
                       ),
                     ),
-                    if (timeLabel != null) ...[
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle!,
+                        style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                      ),
+                    ] else if (timeLabel != null) ...[
                       const SizedBox(height: 2),
                       Text(
                         timeLabel,

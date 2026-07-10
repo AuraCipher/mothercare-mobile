@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:async';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
@@ -84,5 +85,28 @@ class AuthenticatedClient {
       body['message'] as String? ?? 'Request failed (${res.statusCode})',
       statusCode: res.statusCode,
     );
+  }
+
+  Future<Map<String, dynamic>> uploadMultipart(
+    String path, {
+    required String token,
+    required File file,
+    required String fileName,
+    required Map<String, String> fields,
+  }) async {
+    final uri = Uri.parse('$_baseUrl$path');
+    try {
+      final request = http.MultipartRequest('POST', uri);
+      request.headers['Authorization'] = 'Bearer $token';
+      request.headers['Accept'] = 'application/json';
+      request.fields.addAll(fields);
+      request.files.add(await http.MultipartFile.fromPath('file', file.path, filename: fileName));
+
+      final streamed = await request.send().timeout(const Duration(seconds: 60));
+      final res = await http.Response.fromStream(streamed);
+      return _decode(res);
+    } on TimeoutException {
+      throw ApiException('Upload timed out. Check your network.');
+    }
   }
 }

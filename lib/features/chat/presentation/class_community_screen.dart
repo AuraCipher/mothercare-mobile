@@ -18,6 +18,8 @@ class ClassCommunityScreen extends StatelessWidget {
     required this.groupLabel,
     required this.section,
     required this.landing,
+    this.academicYearId,
+    this.branchId,
   });
 
   final StoredSession session;
@@ -25,6 +27,8 @@ class ClassCommunityScreen extends StatelessWidget {
   final String groupLabel;
   final ChatLandingSection section;
   final ChatLandingData landing;
+  final String? academicYearId;
+  final String? branchId;
 
   void _openRoom(BuildContext context, ChatRoomSummary room) {
     final full = landing.roomById(room.id) ?? room;
@@ -35,6 +39,8 @@ class ClassCommunityScreen extends StatelessWidget {
           socket: socket,
           room: full,
           groupLabel: groupLabel,
+          academicYearId: academicYearId,
+          branchId: branchId,
         ),
       ),
     );

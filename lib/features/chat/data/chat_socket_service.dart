@@ -60,13 +60,15 @@ class ChatSocketService {
 
   void sendMessage({
     required String roomId,
-    required String content,
+    String? content,
     String type = 'text',
+    String? mediaFileId,
   }) {
     _socket?.emit('chat:message:send', {
       'roomId': roomId,
       'type': type,
-      'content': content,
+      if (content != null && content.isNotEmpty) 'content': content,
+      if (mediaFileId != null) 'mediaFileId': mediaFileId,
     });
   }
 

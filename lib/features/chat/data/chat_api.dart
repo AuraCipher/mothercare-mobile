@@ -12,6 +12,49 @@ class ChatApi {
     return ChatLandingData.fromJson(data);
   }
 
+  Future<ChatLandingData> fetchAdminLanding({
+    required String token,
+    required String branchId,
+    required String academicYearId,
+  }) async {
+    final body = await _client.getJson(
+      '/staff/chat/landing',
+      token: token,
+      query: {
+        'branchId': branchId,
+        'academicYearId': academicYearId,
+      },
+    );
+    final data = body['data'] as Map<String, dynamic>? ?? {};
+    return ChatLandingData.fromJson(data);
+  }
+
+  Future<ChatRoomSummary> openDirectMessage({
+    required String token,
+    required String branchId,
+    required String academicYearId,
+    required String participantUserId,
+    required String contactName,
+  }) async {
+    final body = await _client.postJson(
+      '/staff/chat/dm',
+      token: token,
+      body: {
+        'branchId': branchId,
+        'academicYearId': academicYearId,
+        'participantUserId': participantUserId,
+      },
+    );
+    final data = body['data'] as Map<String, dynamic>? ?? {};
+    return ChatRoomSummary(
+      id: data['roomId'] as String? ?? '',
+      kind: 'direct_message',
+      name: contactName,
+      canPost: true,
+      unreadCount: 0,
+    );
+  }
+
   Future<ChatLandingData> fetchStaffLanding({
     required String token,
     required String academicYearId,
