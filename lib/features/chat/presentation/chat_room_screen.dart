@@ -21,6 +21,7 @@ import '../../../core/widgets/offline_banner.dart';
 import '../../../core/widgets/universal_header.dart';
 import '../models/chat_models.dart';
 import '../models/pending_outgoing_message.dart';
+import '../widgets/chat_image_bubble.dart';
 import '../widgets/chat_video_bubble.dart';
 import '../widgets/chat_voice_bubble.dart';
 import '../widgets/chat_composer_bar.dart';
@@ -69,6 +70,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   String? _cursor;
   bool _hasMore = true;
   bool _messagesOffline = false;
+  double _voiceLockDragUp = 0;
   late final String _userId;
   StreamSubscription<ChatMessage>? _messageSub;
   StreamSubscription<String>? _errorSub;
@@ -155,7 +157,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         _cursor = cached.cursor;
         _hasMore = cached.hasMore;
         _loading = false;
-        _messagesOffline = true;
       }
       if (restoredPending.isNotEmpty) {
         _pending
@@ -453,16 +454,26 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       _showError('Microphone permission is required for voice notes');
       return;
     }
+    _voiceLockDragUp = 0;
     if (mounted) setState(() {});
   }
 
-  void _onVoiceRecordMove(LongPressMoveUpdateDetails details) {
+  void _onVoicePointerMove(PointerMoveEvent event) {
     if (_voiceRecorder.phase != VoiceRecorderPhase.recording) return;
-    if (details.localOffsetFromOrigin.dy < -72) {
+    _voiceLockDragUp -= event.delta.dy;
+    if (_voiceLockDragUp > 72) {
       _voiceRecorder.lock();
       HapticFeedback.lightImpact();
+      _voiceLockDragUp = 0;
       if (mounted) setState(() {});
     }
+  }
+
+  Future<void> _onVoicePointerUp() async {
+    if (_voiceRecorder.phase == VoiceRecorderPhase.recording) {
+      await _finishVoiceRecording(send: true);
+    }
+    _voiceLockDragUp = 0;
   }
 
   Future<void> _finishVoiceRecording({required bool send}) async {
@@ -550,38 +561,51 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF2F2F2),
-      body: Column(
+      body: Stack(
         children: [
-          UniversalHeader(
-            title: widget.room.name,
-            showBack: true,
+          Column(
+            children: [
+              UniversalHeader(
+                title: widget.room.name,
+                showBack: true,
+              ),
+              if (_voiceRecorder.phase != VoiceRecorderPhase.idle)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  color: AppColors.violet.withValues(alpha: 0.06),
+                  child: Text(
+                    _voiceRecorder.phase == VoiceRecorderPhase.locked
+                        ? 'Recording locked — tap send or delete'
+                        : 'Recording… release to send',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 11, color: AppColors.violet, fontWeight: FontWeight.w500),
+                  ),
+                ),
+              if (_messagesOffline) const OfflineBanner(),
+              if (!widget.room.canPost)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  color: AppColors.surface,
+                  child: const Text(
+                    'Read-only channel',
+                    style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+                  ),
+                ),
+              Expanded(child: _buildMessageList(me)),
+              if (widget.room.canPost) _buildComposer(),
+            ],
           ),
-          if (_voiceRecorder.phase != VoiceRecorderPhase.idle)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              color: AppColors.violet.withValues(alpha: 0.06),
-              child: Text(
-                _voiceRecorder.phase == VoiceRecorderPhase.locked
-                    ? 'Recording locked — tap send or delete'
-                    : 'Recording… release to send',
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 11, color: AppColors.violet, fontWeight: FontWeight.w500),
+          if (_voiceRecorder.phase == VoiceRecorderPhase.recording)
+            Positioned.fill(
+              child: Listener(
+                behavior: HitTestBehavior.translucent,
+                onPointerMove: _onVoicePointerMove,
+                onPointerUp: (_) => _onVoicePointerUp(),
+                onPointerCancel: (_) => _onVoicePointerUp(),
               ),
             ),
-          if (_messagesOffline) const OfflineBanner(),
-          if (!widget.room.canPost)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              color: AppColors.surface,
-              child: const Text(
-                'Read-only channel',
-                style: TextStyle(fontSize: 12, color: AppColors.textMuted),
-              ),
-            ),
-          Expanded(child: _buildMessageList(me)),
-          if (widget.room.canPost) _buildComposer(),
         ],
       ),
     );
@@ -657,8 +681,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       onCamera: () => _pickPhoto(ImageSource.camera),
       onSendText: _sendText,
       onRecordStart: _startVoiceRecording,
-      onRecordMove: _onVoiceRecordMove,
-      onRecordEnd: () => _finishVoiceRecording(send: true),
       onLockedSend: () => _finishVoiceRecording(send: true),
       onRecordCancel: () => _finishVoiceRecording(send: false),
     );
@@ -684,6 +706,8 @@ class _MessageBubble extends StatelessWidget {
     final align = isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start;
     final bg = isMine ? AppColors.violet : AppColors.surface;
     final fg = isMine ? Colors.white : AppColors.textPrimary;
+    final isImage = message.isImageMessage && mediaUrl.isNotEmpty;
+    final showCaption = message.isImageMessage && message.hasCaption;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -700,7 +724,8 @@ class _MessageBubble extends StatelessWidget {
             ),
           Container(
             constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.78),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            clipBehavior: isImage ? Clip.antiAlias : Clip.none,
+            padding: isImage ? EdgeInsets.zero : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
               color: bg,
               borderRadius: BorderRadius.only(
@@ -714,17 +739,10 @@ class _MessageBubble extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (message.mediaFile?.isImage == true && mediaUrl.isNotEmpty)
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.network(
-                      mediaUrl,
-                      headers: {'Authorization': 'Bearer $authToken', 'Accept': 'image/*'},
-                      width: 220,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) =>
-                          Text(message.displayText, style: TextStyle(color: fg)),
-                    ),
+                if (isImage)
+                  ChatImageBubble(
+                    url: mediaUrl,
+                    authToken: authToken,
                   )
                 else if (message.type == 'voice_note' ||
                     message.type == 'audio' ||
@@ -754,17 +772,23 @@ class _MessageBubble extends StatelessWidget {
                             const SizedBox(width: 8),
                             Text('Video', style: TextStyle(color: fg, fontWeight: FontWeight.w600)),
                           ],
-                        ),
-                if (message.displayText.isNotEmpty &&
-                    !(message.mediaFile?.isImage == true && message.content?.trim().isEmpty != false))
+                        )
+                else if (message.displayText.isNotEmpty)
+                  Text(message.displayText, style: TextStyle(color: fg, fontSize: 15, height: 1.35)),
+                if (showCaption)
                   Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(message.displayText, style: TextStyle(color: fg, fontSize: 15, height: 1.35)),
+                    padding: EdgeInsets.fromLTRB(isImage ? 10 : 0, isImage ? 6 : 4, isImage ? 10 : 0, 0),
+                    child: Text(
+                      message.content!.trim(),
+                      style: TextStyle(color: fg, fontSize: 15, height: 1.35),
+                    ),
                   ),
-                const SizedBox(height: 4),
-                Text(
-                  time,
-                  style: TextStyle(fontSize: 10, color: isMine ? Colors.white70 : AppColors.textMuted),
+                Padding(
+                  padding: EdgeInsets.fromLTRB(isImage ? 10 : 0, 4, isImage ? 10 : 0, isImage ? 8 : 0),
+                  child: Text(
+                    time,
+                    style: TextStyle(fontSize: 10, color: isMine ? Colors.white70 : AppColors.textMuted),
+                  ),
                 ),
               ],
             ),

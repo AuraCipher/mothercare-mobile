@@ -1,9 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/theme/app_theme.dart';
-
-typedef RecordMoveCallback = void Function(LongPressMoveUpdateDetails details);
 
 /// WhatsApp-style chat composer — white pill with attach, camera, mic, send.
 class ChatComposerBar extends StatefulWidget {
@@ -19,8 +19,6 @@ class ChatComposerBar extends StatefulWidget {
     required this.onCamera,
     required this.onSendText,
     required this.onRecordStart,
-    required this.onRecordMove,
-    required this.onRecordEnd,
     required this.onLockedSend,
     required this.onRecordCancel,
   });
@@ -35,8 +33,6 @@ class ChatComposerBar extends StatefulWidget {
   final VoidCallback onCamera;
   final VoidCallback onSendText;
   final Future<void> Function() onRecordStart;
-  final RecordMoveCallback onRecordMove;
-  final Future<void> Function() onRecordEnd;
   final VoidCallback onLockedSend;
   final VoidCallback onRecordCancel;
 
@@ -207,15 +203,9 @@ class _ChatComposerBarState extends State<ChatComposerBar> with SingleTickerProv
   Widget _micButton() {
     return GestureDetector(
       onLongPressStart: widget.enabled && !widget.sending
-          ? (_) async {
+          ? (_) {
               HapticFeedback.mediumImpact();
-              await widget.onRecordStart();
-            }
-          : null,
-      onLongPressMoveUpdate: widget.isRecording && !widget.isLocked ? widget.onRecordMove : null,
-      onLongPressEnd: widget.isRecording && !widget.isLocked
-          ? (_) async {
-              await widget.onRecordEnd();
+              unawaited(widget.onRecordStart());
             }
           : null,
       child: SizedBox(

@@ -330,6 +330,9 @@ class ChatMessage {
   final bool isDeleted;
   final ChatMessageMedia? mediaFile;
 
+  bool get isImageMessage => type == 'image' || mediaFile?.isImage == true;
+  bool get hasCaption => content != null && content!.trim().isNotEmpty;
+
   String get displayText {
     if (isDeleted) return 'Message removed';
     if (content != null && content!.trim().isNotEmpty) return content!.trim();
