@@ -19,6 +19,7 @@ import '../../../core/widgets/universal_header.dart';
 import '../models/chat_models.dart';
 import '../models/pending_outgoing_message.dart';
 import '../widgets/chat_video_bubble.dart';
+import '../widgets/chat_voice_bubble.dart';
 import '../widgets/pending_message_bubble.dart';
 
 class ChatRoomScreen extends StatefulWidget {
@@ -62,6 +63,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   String? _cursor;
   bool _hasMore = true;
   StreamSubscription<ChatMessage>? _messageSub;
+  StreamSubscription<String>? _errorSub;
 
   @override
   void initState() {
@@ -69,6 +71,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     widget.socket.joinRoom(widget.room.id);
     widget.socket.markRead(roomId: widget.room.id);
     _messageSub = widget.socket.onMessage.listen(_onSocketMessage);
+    _errorSub = widget.socket.onError.listen(_onSocketError);
     _scrollController.addListener(_onScroll);
     _loadMessages();
   }
@@ -76,6 +79,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   @override
   void dispose() {
     _messageSub?.cancel();
+    _errorSub?.cancel();
     _recorder.dispose();
     _scrollController.dispose();
     _composer.dispose();
@@ -95,6 +99,16 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     });
     widget.socket.markRead(roomId: widget.room.id, messageId: message.id);
     _scrollToBottom();
+  }
+
+  void _onSocketError(String message) {
+    if (!mounted) return;
+    if (_awaitingSocketPendingId != null) {
+      _markPendingFailed(_awaitingSocketPendingId!);
+      _awaitingSocketPendingId = null;
+      if (mounted) setState(() => _sending = false);
+    }
+    _showError(message);
   }
 
   void _onScroll() {
@@ -609,14 +623,21 @@ class _MessageBubble extends StatelessWidget {
                           ],
                         )
                 else if (message.mediaFile?.isAudio == true || message.type == 'voice_note' || message.type == 'audio')
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.mic_rounded, color: fg, size: 20),
-                      const SizedBox(width: 8),
-                      Text('Voice message', style: TextStyle(color: fg, fontWeight: FontWeight.w600)),
-                    ],
-                  ),
+                  mediaUrl.isNotEmpty
+                      ? ChatVoiceBubble(
+                          url: mediaUrl,
+                          authToken: authToken,
+                          foregroundColor: fg,
+                          accentColor: isMine ? Colors.white : AppColors.violet,
+                        )
+                      : Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.mic_rounded, color: fg, size: 20),
+                            const SizedBox(width: 8),
+                            Text('Voice message', style: TextStyle(color: fg, fontWeight: FontWeight.w600)),
+                          ],
+                        ),
                 if (message.displayText.isNotEmpty &&
                     !(message.mediaFile?.isImage == true && message.content?.trim().isEmpty != false))
                   Padding(

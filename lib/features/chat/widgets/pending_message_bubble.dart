@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../models/pending_outgoing_message.dart';
@@ -27,6 +28,7 @@ class PendingMessageBubble extends StatelessWidget {
             : 'Failed';
     final localPath = pending.localFilePath;
     final showImagePreview = pending.type == 'image' && localPath != null && localPath.isNotEmpty;
+    final showVideoPreview = pending.type == 'video' && localPath != null && localPath.isNotEmpty;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -49,40 +51,33 @@ class PendingMessageBubble extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (showImagePreview)
-                  Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      Image.file(
-                        File(localPath),
-                        width: 220,
-                        height: 160,
-                        fit: BoxFit.cover,
-                      ),
-                      Container(
-                        width: 220,
-                        height: 160,
-                        color: Colors.black38,
-                        child: Center(
-                          child: SizedBox(
-                            width: 36,
-                            height: 36,
-                            child: CircularProgressIndicator(
-                              value: pending.phase == PendingSendPhase.failed ? null : progress,
-                              strokeWidth: 3,
-                              color: Colors.white,
-                              backgroundColor: Colors.white24,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
+                  _PendingMediaOverlay(
+                    progress: progress,
+                    failed: pending.phase == PendingSendPhase.failed,
+                    child: Image.file(
+                      File(localPath),
+                      width: 220,
+                      height: 160,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                if (showVideoPreview)
+                  _PendingLocalVideoPreview(
+                    filePath: localPath,
+                    progress: progress,
+                    failed: pending.phase == PendingSendPhase.failed,
                   ),
                 Padding(
-                  padding: EdgeInsets.fromLTRB(14, showImagePreview ? 8 : 10, 14, 10),
+                  padding: EdgeInsets.fromLTRB(
+                    14,
+                    (showImagePreview || showVideoPreview) ? 8 : 10,
+                    14,
+                    10,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (!showImagePreview)
+                      if (!showImagePreview && !showVideoPreview)
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -100,8 +95,8 @@ class PendingMessageBubble extends StatelessWidget {
                             ),
                           ],
                         ),
-                      if (!showImagePreview) const SizedBox(height: 10),
-                      if (!showImagePreview)
+                      if (!showImagePreview && !showVideoPreview) const SizedBox(height: 10),
+                      if (!showImagePreview && !showVideoPreview)
                         ClipRRect(
                           borderRadius: BorderRadius.circular(4),
                           child: LinearProgressIndicator(
@@ -111,7 +106,7 @@ class PendingMessageBubble extends StatelessWidget {
                             color: Colors.white,
                           ),
                         ),
-                      SizedBox(height: showImagePreview ? 0 : 6),
+                      SizedBox(height: (showImagePreview || showVideoPreview) ? 0 : 6),
                       Text(
                         statusText,
                         style: const TextStyle(fontSize: 11, color: Colors.white70),
@@ -153,5 +148,121 @@ class PendingMessageBubble extends StatelessWidget {
       default:
         return Icons.attach_file;
     }
+  }
+}
+
+class _PendingMediaOverlay extends StatelessWidget {
+  const _PendingMediaOverlay({
+    required this.child,
+    required this.progress,
+    required this.failed,
+  });
+
+  final Widget child;
+  final double progress;
+  final bool failed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        child,
+        Container(
+          width: 220,
+          height: 160,
+          color: Colors.black38,
+          child: Center(
+            child: SizedBox(
+              width: 36,
+              height: 36,
+              child: CircularProgressIndicator(
+                value: failed ? null : progress,
+                strokeWidth: 3,
+                color: Colors.white,
+                backgroundColor: Colors.white24,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PendingLocalVideoPreview extends StatefulWidget {
+  const _PendingLocalVideoPreview({
+    required this.filePath,
+    required this.progress,
+    required this.failed,
+  });
+
+  final String filePath;
+  final double progress;
+  final bool failed;
+
+  @override
+  State<_PendingLocalVideoPreview> createState() => _PendingLocalVideoPreviewState();
+}
+
+class _PendingLocalVideoPreviewState extends State<_PendingLocalVideoPreview> {
+  VideoPlayerController? _controller;
+  bool _ready = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _init();
+  }
+
+  Future<void> _init() async {
+    final controller = VideoPlayerController.file(File(widget.filePath));
+    try {
+      await controller.initialize();
+      await controller.pause();
+      if (!mounted) {
+        controller.dispose();
+        return;
+      }
+      setState(() {
+        _controller = controller;
+        _ready = true;
+      });
+    } catch (_) {
+      controller.dispose();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _PendingMediaOverlay(
+      progress: widget.progress,
+      failed: widget.failed,
+      child: SizedBox(
+        width: 220,
+        height: 160,
+        child: _ready && _controller != null
+            ? FittedBox(
+                fit: BoxFit.cover,
+                child: SizedBox(
+                  width: _controller!.value.size.width,
+                  height: _controller!.value.size.height,
+                  child: VideoPlayer(_controller!),
+                ),
+              )
+            : Container(
+                color: Colors.black87,
+                child: const Center(
+                  child: Icon(Icons.videocam_rounded, color: Colors.white54, size: 32),
+                ),
+              ),
+      ),
+    );
   }
 }
