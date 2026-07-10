@@ -53,6 +53,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
   final List<ChatMessage> _messages = [];
   final List<PendingOutgoingMessage> _pending = [];
+  String? _awaitingSocketPendingId;
   bool _loading = true;
   bool _loadingMore = false;
   bool _sending = false;
@@ -84,9 +85,13 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   void _onSocketMessage(ChatMessage message) {
     if (message.roomId != widget.room.id) return;
     if (_messages.any((m) => m.id == message.id)) return;
+    final me = widget.session.payload.id;
     setState(() {
       _messages.add(message);
-      if (_pending.isNotEmpty) _pending.removeAt(0);
+      if (message.sender.id == me && _awaitingSocketPendingId != null) {
+        _pending.removeWhere((p) => p.localId == _awaitingSocketPendingId);
+        _awaitingSocketPendingId = null;
+      }
     });
     widget.socket.markRead(roomId: widget.room.id, messageId: message.id);
     _scrollToBottom();
@@ -235,11 +240,14 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         type: messageType,
         mediaFileId: uploaded.id,
       );
+      _awaitingSocketPendingId = localId;
     } on ApiException catch (e) {
       _markPendingFailed(localId);
+      _awaitingSocketPendingId = null;
       _showError(e.message);
     } catch (_) {
       _markPendingFailed(localId);
+      _awaitingSocketPendingId = null;
       _showError('Failed to upload attachment');
     } finally {
       if (mounted) setState(() => _sending = false);

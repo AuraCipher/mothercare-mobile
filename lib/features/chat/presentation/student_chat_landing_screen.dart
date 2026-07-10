@@ -105,6 +105,7 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
           socket: widget.socket,
           room: full,
           groupLabel: widget.bootstrap.groupLabel,
+          academicYearId: widget.bootstrap.academicYearId,
         ),
       ),
     ).then((_) => _load());
@@ -159,6 +160,7 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
           groupLabel: label,
           section: section,
           landing: _landing!,
+          academicYearId: widget.bootstrap.academicYearId,
         ),
       ),
     ).then((_) => _load());
