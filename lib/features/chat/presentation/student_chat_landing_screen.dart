@@ -168,7 +168,41 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
 
   List<ChatLandingSection> get _visibleSections {
     final sections = _landing?.sections ?? [];
-    return sections.where((s) => s.key != 'school' && s.key != 'class').toList();
+    return sections.where((s) => s.key != 'school' && s.key != 'class' && s.key != 'contacts').toList();
+  }
+
+  List<ChatContactSummary> get _contacts {
+    if (_landing == null) return [];
+    if (_landing!.contacts.isNotEmpty) return _landing!.contacts;
+    final section = _landing!.sections.where((s) => s.key == 'contacts').firstOrNull;
+    return section?.contacts ?? [];
+  }
+
+  Future<void> _openContact(ChatContactSummary contact) async {
+    try {
+      ChatRoomSummary room;
+      if (contact.dmRoomId != null && contact.dmRoomId!.isNotEmpty) {
+        room = _landing?.roomById(contact.dmRoomId!) ??
+            ChatRoomSummary(
+              id: contact.dmRoomId!,
+              kind: 'direct_message',
+              name: contact.name,
+              canPost: true,
+              unreadCount: 0,
+            );
+      } else {
+        room = await _chatApi.openStudentDirectMessage(
+          token: widget.session.token,
+          participantUserId: contact.userId,
+          contactName: contact.name,
+        );
+      }
+      if (!mounted) return;
+      _openRoom(room);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    }
   }
 
   ChatLandingSection? get _classSection {
@@ -229,9 +263,10 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
     final announcement = _announcementRoom;
     final classSection = _classSection;
     final sections = _visibleSections;
+    final contacts = _contacts;
     final hasClass = classSection != null && classSection.rooms.isNotEmpty;
 
-    if (announcement == null && !hasClass && sections.isEmpty) {
+    if (announcement == null && !hasClass && sections.isEmpty && contacts.isEmpty) {
       return RefreshIndicator(
         onRefresh: _load,
         color: AppColors.violet,
@@ -260,6 +295,12 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
               unread: classCommunityUnread(classSection),
               onTap: () => _openClassCommunity(classSection),
             ),
+          if (contacts.isNotEmpty) ...[
+            _sectionHeading('Contacts'),
+            ...contacts.map(
+              (c) => _StudentContactRow(contact: c, onTap: () => _openContact(c)),
+            ),
+          ],
           ...sections.expand(_buildGenericSection),
         ],
       ),
@@ -427,6 +468,30 @@ class _UnreadBadge extends StatelessWidget {
         count > 99 ? '99+' : '$count',
         style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
       ),
+    );
+  }
+}
+
+class _StudentContactRow extends StatelessWidget {
+  const _StudentContactRow({required this.contact, required this.onTap});
+
+  final ChatContactSummary contact;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      onTap: onTap,
+      leading: CircleAvatar(
+        backgroundColor: AppColors.violet.withValues(alpha: 0.12),
+        child: Text(
+          contact.name.isNotEmpty ? contact.name[0].toUpperCase() : '?',
+          style: const TextStyle(color: AppColors.violet, fontWeight: FontWeight.w700),
+        ),
+      ),
+      title: Text(contact.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+      subtitle: Text(contact.roleLabel, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+      trailing: const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
     );
   }
 }

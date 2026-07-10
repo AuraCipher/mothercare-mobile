@@ -38,6 +38,26 @@ class ChatApi {
     );
   }
 
+  Future<ChatRoomSummary> openStudentDirectMessage({
+    required String token,
+    required String participantUserId,
+    required String contactName,
+  }) async {
+    final body = await _client.postJson(
+      '/student/chat/dm',
+      token: token,
+      body: {'participantUserId': participantUserId},
+    );
+    final data = body['data'] as Map<String, dynamic>? ?? {};
+    return ChatRoomSummary(
+      id: data['roomId'] as String? ?? '',
+      kind: 'direct_message',
+      name: contactName,
+      canPost: true,
+      unreadCount: 0,
+    );
+  }
+
   Future<ChatLandingData> fetchAdminLanding({
     required String token,
     required String branchId,

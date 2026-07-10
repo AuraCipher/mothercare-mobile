@@ -146,6 +146,7 @@ class ChatContactSummary {
     required this.role,
     this.branchRole,
     this.dmRoomId,
+    this.roleLabelOverride,
   });
 
   final String userId;
@@ -153,6 +154,7 @@ class ChatContactSummary {
   final String role;
   final String? branchRole;
   final String? dmRoomId;
+  final String? roleLabelOverride;
 
   factory ChatContactSummary.fromJson(Map<String, dynamic> json) {
     return ChatContactSummary(
@@ -161,6 +163,7 @@ class ChatContactSummary {
       role: json['role'] as String? ?? '',
       branchRole: json['branchRole'] as String?,
       dmRoomId: json['dmRoomId'] as String?,
+      roleLabelOverride: json['roleLabel'] as String?,
     );
   }
 
@@ -170,9 +173,13 @@ class ChatContactSummary {
         'role': role,
         'branchRole': branchRole,
         'dmRoomId': dmRoomId,
+        if (roleLabelOverride != null) 'roleLabel': roleLabelOverride,
       };
 
   String get roleLabel {
+    if (roleLabelOverride != null && roleLabelOverride!.isNotEmpty) {
+      return roleLabelOverride!;
+    }
     switch (branchRole ?? role) {
       case 'branch_admin':
         return 'Principal';
