@@ -9,7 +9,7 @@ import '../../../core/widgets/universal_header.dart';
 import '../widgets/room_list_icon.dart';
 import 'chat_room_screen.dart';
 
-typedef ClassCommunityRoomOpened = void Function(String roomId);
+typedef ClassCommunityRoomOpened = Future<void> Function(String roomId);
 
 /// Drill-down: class name → Class Announcement + subject Groups.
 class ClassCommunityScreen extends StatefulWidget {
@@ -47,9 +47,9 @@ class _ClassCommunityScreenState extends State<ClassCommunityScreen> {
     _section = widget.section;
   }
 
-  void _markRoomReadLocally(String roomId) {
-    widget.onRoomOpened?.call(roomId);
-    widget.socket.markRead(roomId: roomId);
+  Future<void> _markRoomReadLocally(String roomId) async {
+    await widget.onRoomOpened?.call(roomId);
+    if (!mounted) return;
     setState(() => _section = _sectionWithClearedRoom(roomId));
   }
 
@@ -61,10 +61,11 @@ class _ClassCommunityScreenState extends State<ClassCommunityScreen> {
     );
   }
 
-  void _openRoom(ChatRoomSummary room) {
-    _markRoomReadLocally(room.id);
+  Future<void> _openRoom(ChatRoomSummary room) async {
+    await _markRoomReadLocally(room.id);
     final full = widget.landing.roomById(room.id) ?? room;
-    Navigator.of(context).push(
+    if (!mounted) return;
+    await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => ChatRoomScreen(
           session: widget.session,
@@ -76,6 +77,8 @@ class _ClassCommunityScreenState extends State<ClassCommunityScreen> {
         ),
       ),
     );
+    if (!mounted) return;
+    await _markRoomReadLocally(room.id);
   }
 
   @override
