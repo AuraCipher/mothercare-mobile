@@ -3,8 +3,10 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:sqflite/sqflite.dart';
 
 import '../../features/chat/models/chat_models.dart';
+import 'app_database.dart';
 import 'cache_constants.dart';
 
 class CachedRoomMessages {
@@ -29,41 +31,53 @@ class ChatMessageCacheStore {
   static final ChatMessageCacheStore instance = ChatMessageCacheStore._();
 
   static const _maxMessagesPerRoom = 200;
-
   Directory? _baseDir;
 
-  Future<Directory> _userDir(String userId) async {
-    _baseDir ??= await getApplicationDocumentsDirectory();
-    final dir = Directory(p.join(_baseDir!.path, 'mcs_chat_cache', userId, 'rooms'));
-    if (!await dir.exists()) {
-      await dir.create(recursive: true);
-    }
-    return dir;
+  Future<void> _deleteUserFiles(String userId) async {
+    try {
+      _baseDir ??= await getApplicationDocumentsDirectory();
+      final dir = Directory(p.join(_baseDir!.path, 'mcs_chat_cache', userId));
+      if (await dir.exists()) {
+        await dir.delete(recursive: true);
+      }
+    } catch (_) {}
   }
-
-  String _roomFileName(String roomId) => '${_safeId(roomId)}.json';
-
-  String _safeId(String value) => value.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
 
   Future<CachedRoomMessages?> loadRoom({
     required String userId,
     required String roomId,
   }) async {
     try {
-      final file = File(p.join((await _userDir(userId)).path, _roomFileName(roomId)));
-      if (!await file.exists()) return null;
-      final map = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
-      final savedAt = DateTime.tryParse(map['savedAt'] as String? ?? '');
-      if (savedAt == null) return null;
-      final messagesRaw = map['messages'] as List<dynamic>? ?? [];
-      final messages = messagesRaw
-          .map((e) => ChatMessage.fromJson(e as Map<String, dynamic>))
+      final db = await AppDatabase.instance.database;
+      final metaRows = await db.query(
+        'chat_room_meta',
+        where: 'user_id = ? AND room_id = ?',
+        whereArgs: [userId, roomId],
+        limit: 1,
+      );
+      if (metaRows.isEmpty) return null;
+
+      final meta = metaRows.first;
+      final savedAtMs = meta['saved_at'] as int?;
+      if (savedAtMs == null) return null;
+
+      final messageRows = await db.query(
+        'chat_messages',
+        where: 'user_id = ? AND room_id = ?',
+        whereArgs: [userId, roomId],
+        orderBy: 'sort_key ASC',
+      );
+      final messages = messageRows
+          .map((row) => ChatMessage.fromJson(
+                jsonDecode(row['payload'] as String) as Map<String, dynamic>,
+              ))
           .toList();
+
       return CachedRoomMessages(
         messages: messages,
-        cursor: map['cursor'] as String?,
-        hasMore: map['hasMore'] as bool? ?? true,
-        savedAt: savedAt,
+        cursor: meta['cursor'] as String?,
+        hasMore: (meta['has_more'] as int? ?? 1) == 1,
+        savedAt: DateTime.fromMillisecondsSinceEpoch(savedAtMs),
       );
     } catch (_) {
       return null;
@@ -81,25 +95,47 @@ class ChatMessageCacheStore {
       final trimmed = messages.length > _maxMessagesPerRoom
           ? messages.sublist(messages.length - _maxMessagesPerRoom)
           : messages;
-      final file = File(p.join((await _userDir(userId)).path, _roomFileName(roomId)));
-      await file.writeAsString(
-        jsonEncode({
-          'savedAt': DateTime.now().toUtc().toIso8601String(),
-          'cursor': cursor,
-          'hasMore': hasMore,
-          'messages': trimmed.map((m) => m.toJson()).toList(),
-        }),
-      );
+      final db = await AppDatabase.instance.database;
+      final now = DateTime.now().millisecondsSinceEpoch;
+
+      await db.transaction((txn) async {
+        await txn.delete(
+          'chat_messages',
+          where: 'user_id = ? AND room_id = ?',
+          whereArgs: [userId, roomId],
+        );
+        var index = 0;
+        for (final message in trimmed) {
+          await txn.insert(
+            'chat_messages',
+            {
+              'user_id': userId,
+              'room_id': roomId,
+              'message_id': message.id,
+              'sort_key': index++,
+              'payload': jsonEncode(message.toJson()),
+              'created_at': message.createdAt.millisecondsSinceEpoch,
+            },
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        }
+        await txn.insert(
+          'chat_room_meta',
+          {
+            'user_id': userId,
+            'room_id': roomId,
+            'cursor': cursor,
+            'has_more': hasMore ? 1 : 0,
+            'saved_at': now,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      });
     } catch (_) {}
   }
 
   Future<void> clearUser(String userId) async {
-    try {
-      _baseDir ??= await getApplicationDocumentsDirectory();
-      final dir = Directory(p.join(_baseDir!.path, 'mcs_chat_cache', userId));
-      if (await dir.exists()) {
-        await dir.delete(recursive: true);
-      }
-    } catch (_) {}
+    await _deleteUserFiles(userId);
+    await AppDatabase.instance.clearUser(userId);
   }
 }

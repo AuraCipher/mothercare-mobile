@@ -15,7 +15,8 @@ import '../widgets/landing_header.dart';
 import '../../../core/widgets/offline_banner.dart';
 import '../widgets/room_list_icon.dart';
 import '../../../testing/e2e_keys.dart';
-import 'chat_room_screen.dart';
+import '../../student/presentation/student_chat_nav.dart';
+import 'student_system_room_screen.dart';
 import 'class_community_screen.dart';
 
 class StudentChatLandingScreen extends StatefulWidget {
@@ -107,16 +108,12 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
 
   void _openRoom(ChatRoomSummary room) {
     final full = _landing?.roomById(room.id) ?? room;
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ChatRoomScreen(
-          session: widget.session,
-          socket: widget.socket,
-          room: full,
-          groupLabel: widget.bootstrap.groupLabel,
-          academicYearId: widget.bootstrap.academicYearId,
-        ),
-      ),
+    openStudentChatRoomAndWait(
+      context: context,
+      session: widget.session,
+      socket: widget.socket,
+      room: full,
+      bootstrap: widget.bootstrap,
     ).then((_) => _load());
   }
 
@@ -177,7 +174,23 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
 
   List<ChatLandingSection> get _visibleSections {
     final sections = _landing?.sections ?? [];
-    return sections.where((s) => s.key != 'school' && s.key != 'class' && s.key != 'contacts').toList();
+    return sections
+        .where((s) => s.key != 'school' && s.key != 'class' && s.key != 'contacts' && s.key != 'system')
+        .toList();
+  }
+
+  List<ChatRoomSummary> get _systemRecordRooms {
+    final sections = _landing?.sections ?? [];
+    final system = sections.where((s) => s.key == 'system').firstOrNull;
+    final rooms = system?.rooms ?? [];
+    const order = ['system_attendance', 'system_payment', 'system_result'];
+    final sorted = [...rooms];
+    sorted.sort((a, b) {
+      final ai = order.indexOf(a.kind);
+      final bi = order.indexOf(b.kind);
+      return (ai < 0 ? 99 : ai).compareTo(bi < 0 ? 99 : bi);
+    });
+    return sorted;
   }
 
   List<ChatContactSummary> get _contacts {
@@ -273,9 +286,10 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
     final classSection = _classSection;
     final sections = _visibleSections;
     final contacts = _contacts;
+    final systemRecords = _systemRecordRooms;
     final hasClass = classSection != null && classSection.rooms.isNotEmpty;
 
-    if (announcement == null && !hasClass && sections.isEmpty && contacts.isEmpty) {
+    if (announcement == null && !hasClass && sections.isEmpty && contacts.isEmpty && systemRecords.isEmpty) {
       return RefreshIndicator(
         onRefresh: _load,
         color: AppColors.violet,
@@ -308,6 +322,15 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
             _sectionHeading('Contacts'),
             ...contacts.map(
               (c) => _StudentContactRow(contact: c, onTap: () => _openContact(c)),
+            ),
+          ],
+          if (systemRecords.isNotEmpty) ...[
+            _sectionHeading('School Records'),
+            ...systemRecords.map(
+              (room) => StudentSystemRecordTile(
+                room: room,
+                onTap: () => _openRoom(room),
+              ),
             ),
           ],
           ...sections.expand(_buildGenericSection),

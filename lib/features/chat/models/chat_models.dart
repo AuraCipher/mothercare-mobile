@@ -298,6 +298,10 @@ class ChatMessageMedia {
   bool get isVideo =>
       purpose != 'voice_note' && (mimeType.startsWith('video/') || purpose == 'video');
   bool get isAudio => mimeType.startsWith('audio/') || purpose == 'voice_note';
+  bool get isDocument =>
+      purpose == 'document' ||
+      mimeType == 'application/pdf' ||
+      mimeType.startsWith('application/') && !mimeType.startsWith('image/') && !mimeType.startsWith('video/');
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -331,7 +335,18 @@ class ChatMessage {
   final ChatMessageMedia? mediaFile;
 
   bool get isImageMessage => type == 'image' || mediaFile?.isImage == true;
+  bool get isDocumentMessage => type == 'document' || mediaFile?.isDocument == true;
   bool get hasCaption => content != null && content!.trim().isNotEmpty;
+
+  String get documentFileName {
+    if (title != null && title!.trim().isNotEmpty) return title!.trim();
+    final url = mediaFile?.url ?? '';
+    if (url.isNotEmpty) {
+      final segment = Uri.parse(url).pathSegments.lastWhere((s) => s.isNotEmpty, orElse: () => '');
+      if (segment.isNotEmpty) return segment;
+    }
+    return 'Document';
+  }
 
   String get displayText {
     if (isDeleted) return 'Message removed';
@@ -343,6 +358,7 @@ class ChatMessage {
     if (type == 'image') return 'Photo';
     if (type == 'video') return 'Video';
     if (type == 'voice_note' || type == 'audio') return 'Voice message';
+    if (type == 'document' || mediaFile?.isDocument == true) return documentFileName;
     return '';
   }
 
@@ -406,6 +422,9 @@ String classDisplayName(String? groupLabel) {
 String displayRoomName(ChatRoomSummary room, {String? groupLabel}) {
   if (room.kind == 'school_announcement') return 'Announcement';
   if (room.kind == 'class_announcement') return 'Class Announcement';
+  if (room.kind == 'system_attendance') return 'Attendance';
+  if (room.kind == 'system_payment') return 'Fees & Payments';
+  if (room.kind == 'system_result') return 'Results';
   return room.name;
 }
 
@@ -441,7 +460,7 @@ List<ChatLandingSection> groupRoomsForStaffLanding(List<ChatRoomSummary> rooms) 
       title: 'My Channels',
       rooms: pick(['class_announcement', 'group_chat']),
     ),
-    ChatLandingSection(key: 'system', title: 'Updates', rooms: pick(['system_attendance', 'system_payment'])),
+    ChatLandingSection(key: 'system', title: 'School Records', rooms: pick(['system_attendance', 'system_payment', 'system_result'])),
     ChatLandingSection(key: 'dm', title: 'Messages', rooms: pick(['direct_message'])),
   ].where((s) => s.rooms.isNotEmpty).toList();
 }

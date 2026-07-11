@@ -14,9 +14,9 @@ import '../../teacher/data/teacher_api.dart';
 import '../../teacher/models/teacher_bootstrap.dart';
 import '../data/chat_socket_service.dart';
 import '../widgets/portal_bottom_nav.dart';
+import '../../teacher/presentation/teacher_workspace_tab.dart';
 import 'portal_profile_tab.dart';
 import 'portal_chat_landing_screen.dart';
-import 'teacher_classes_tab.dart';
 
 class TeacherChatShell extends StatefulWidget {
   const TeacherChatShell({super.key, required this.session});
@@ -211,6 +211,7 @@ class _TeacherChatShellState extends State<TeacherChatShell> {
           headerTitle: bootstrap.branchName,
           branchId: bootstrap.branchId,
           academicYearId: bootstrap.academicYearId,
+          teacherBootstrap: bootstrap,
           onMenu: _showMenu,
         );
       case PortalNavTab.workspace:
@@ -218,10 +219,15 @@ class _TeacherChatShellState extends State<TeacherChatShell> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             UniversalHeader(
-              title: 'My Classes',
+              title: 'Workspace',
               subtitle: bootstrap.academicYearLabel,
             ),
-            Expanded(child: TeacherClassesTab(bootstrap: bootstrap)),
+            Expanded(
+              child: TeacherWorkspaceTab(
+                token: widget.session.token,
+                bootstrap: bootstrap,
+              ),
+            ),
           ],
         );
       case PortalNavTab.profile:

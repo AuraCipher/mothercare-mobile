@@ -14,6 +14,9 @@ import '../widgets/room_list_icon.dart';
 import '../../../testing/e2e_keys.dart';
 import 'chat_room_screen.dart';
 import 'class_community_screen.dart';
+import 'teacher_system_room_screen.dart';
+import '../../teacher/models/teacher_bootstrap.dart';
+import '../../teacher/presentation/teacher_chat_nav.dart';
 
 enum PortalChatKind { admin, teacher }
 
@@ -28,6 +31,7 @@ class PortalChatLandingScreen extends StatefulWidget {
     required this.academicYearId,
     this.branchId,
     this.onMenu,
+    this.teacherBootstrap,
   });
 
   final PortalChatKind kind;
@@ -37,6 +41,7 @@ class PortalChatLandingScreen extends StatefulWidget {
   final String academicYearId;
   final String? branchId;
   final VoidCallback? onMenu;
+  final TeacherBootstrap? teacherBootstrap;
 
   @override
   State<PortalChatLandingScreen> createState() => _PortalChatLandingScreenState();
@@ -136,6 +141,18 @@ class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
   void _openRoom(ChatRoomSummary room) {
     final full = _landing?.roomById(room.id) ?? room;
     final branchId = widget.branchId;
+    if (widget.kind == PortalChatKind.teacher &&
+        widget.teacherBootstrap != null &&
+        isTeacherSystemRecordRoom(full.kind)) {
+      openTeacherChatRoomAndWait(
+        context: context,
+        session: widget.session,
+        socket: widget.socket,
+        room: full,
+        bootstrap: widget.teacherBootstrap!,
+      ).then((_) => _load());
+      return;
+    }
     Navigator.of(context)
         .push(
       MaterialPageRoute(
@@ -228,6 +245,15 @@ class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
     return section?.contacts ?? [];
   }
 
+  List<ChatRoomSummary> get _teacherRecords {
+    if (widget.kind != PortalChatKind.teacher || _landing == null) return [];
+    final section = _landing!.sections.where((s) => s.key == 'records').firstOrNull;
+    if (section != null && section.rooms.isNotEmpty) return section.rooms;
+    return _landing!.rooms
+        .where((r) => r.kind == 'system_teacher_attendance' || r.kind == 'system_teacher_payroll')
+        .toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -269,6 +295,7 @@ class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
 
     final school = _roomByKind('school_announcement');
     final teachers = _roomByKind('teacher_announcement');
+    final teacherRecords = _teacherRecords;
     final communities = _communities;
     final contacts = _contacts;
 
@@ -286,6 +313,12 @@ class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
               onTap: () => _openRoom(teachers),
               accent: AppColors.violet.withValues(alpha: 0.04),
             ),
+          if (teacherRecords.isNotEmpty) ...[
+            const _SectionHeader(title: 'My Records'),
+            ...teacherRecords.map(
+              (room) => TeacherSystemRecordTile(room: room, onTap: () => _openRoom(room)),
+            ),
+          ],
           if (communities.isNotEmpty) ...[
             _SectionHeader(title: _classesTitle),
             ...communities.map(

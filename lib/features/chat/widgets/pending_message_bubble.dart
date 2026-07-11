@@ -5,6 +5,7 @@ import 'package:video_player/video_player.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../models/pending_outgoing_message.dart';
+import 'pending_voice_preview.dart';
 
 /// WhatsApp-style outgoing bubble while upload/send is in progress.
 class PendingMessageBubble extends StatelessWidget {
@@ -31,6 +32,9 @@ class PendingMessageBubble extends StatelessWidget {
     final localPath = pending.localFilePath;
     final showImagePreview = pending.type == 'image' && localPath != null && localPath.isNotEmpty;
     final showVideoPreview = pending.type == 'video' && localPath != null && localPath.isNotEmpty;
+    final showDocumentPreview = pending.type == 'document' && pending.fileName != null;
+    final showVoicePreview =
+        (pending.type == 'voice_note' || pending.type == 'audio') && pending.localId.isNotEmpty;
 
     final bubble = Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -69,17 +73,33 @@ class PendingMessageBubble extends StatelessWidget {
                     progress: progress,
                     failed: pending.phase == PendingSendPhase.failed,
                   ),
+                if (showDocumentPreview)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                    child: _PendingDocumentCard(
+                      fileName: pending.fileName!,
+                      progress: progress,
+                      failed: pending.phase == PendingSendPhase.failed,
+                    ),
+                  ),
+                if (showVoicePreview)
+                  PendingVoicePreview(
+                    seed: pending.localId,
+                    durationSeconds: pending.durationSeconds,
+                    progress: progress,
+                    failed: pending.phase == PendingSendPhase.failed,
+                  ),
                 Padding(
                   padding: EdgeInsets.fromLTRB(
                     14,
-                    (showImagePreview || showVideoPreview) ? 8 : 10,
+                    (showImagePreview || showVideoPreview || showDocumentPreview || showVoicePreview) ? 8 : 10,
                     14,
                     10,
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (!showImagePreview && !showVideoPreview)
+                      if (!showImagePreview && !showVideoPreview && !showDocumentPreview && !showVoicePreview)
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -97,8 +117,8 @@ class PendingMessageBubble extends StatelessWidget {
                             ),
                           ],
                         ),
-                      if (!showImagePreview && !showVideoPreview) const SizedBox(height: 10),
-                      if (!showImagePreview && !showVideoPreview)
+                      if (!showImagePreview && !showVideoPreview && !showDocumentPreview && !showVoicePreview) const SizedBox(height: 10),
+                      if (!showImagePreview && !showVideoPreview && !showDocumentPreview && !showVoicePreview)
                         ClipRRect(
                           borderRadius: BorderRadius.circular(4),
                           child: LinearProgressIndicator(
@@ -108,7 +128,7 @@ class PendingMessageBubble extends StatelessWidget {
                             color: Colors.white,
                           ),
                         ),
-                      SizedBox(height: (showImagePreview || showVideoPreview) ? 0 : 6),
+                      SizedBox(height: (showImagePreview || showVideoPreview || showDocumentPreview || showVoicePreview) ? 0 : 6),
                       Text(
                         statusText,
                         style: const TextStyle(fontSize: 11, color: Colors.white70),
@@ -138,6 +158,8 @@ class PendingMessageBubble extends StatelessWidget {
       case 'voice_note':
       case 'audio':
         return 'Voice message';
+      case 'document':
+        return 'Document';
       default:
         return 'Attachment';
     }
@@ -152,9 +174,73 @@ class PendingMessageBubble extends StatelessWidget {
       case 'voice_note':
       case 'audio':
         return Icons.mic_none_rounded;
+      case 'document':
+        return Icons.insert_drive_file_outlined;
       default:
         return Icons.attach_file;
     }
+  }
+}
+
+class _PendingDocumentCard extends StatelessWidget {
+  const _PendingDocumentCard({
+    required this.fileName,
+    required this.progress,
+    required this.failed,
+  });
+
+  final String fileName;
+  final double progress;
+  final bool failed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.insert_drive_file_outlined, color: Colors.white, size: 24),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  fileName,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Positioned.fill(
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.black26,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Center(
+              child: SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(
+                  value: failed ? null : progress,
+                  strokeWidth: 2.5,
+                  color: Colors.white,
+                  backgroundColor: Colors.white24,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
 

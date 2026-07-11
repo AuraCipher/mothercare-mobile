@@ -66,6 +66,30 @@ RoomIconStyle roomIconStyle(ChatRoomSummary room) {
         background: Color(0xFFFFF4E5),
         foreground: Color(0xFFD97706),
       );
+    case 'system_result':
+      return const RoomIconStyle(
+        icon: Icons.emoji_events_rounded,
+        background: Color(0xFFEEF2FF),
+        foreground: Color(0xFF4F46E5),
+      );
+    case 'system_teacher_attendance':
+      return const RoomIconStyle(
+        icon: Icons.fact_check_rounded,
+        background: Color(0xFFE6F7F1),
+        foreground: Color(0xFF059669),
+      );
+    case 'system_teacher_payroll':
+      return const RoomIconStyle(
+        icon: Icons.payments_rounded,
+        background: Color(0xFFFFF4E5),
+        foreground: Color(0xFFD97706),
+      );
+    case 'system_teacher_alerts':
+      return const RoomIconStyle(
+        icon: Icons.notifications_active_rounded,
+        background: Color(0xFFFEF3C7),
+        foreground: Color(0xFFB45309),
+      );
     case 'direct_message':
       return const RoomIconStyle(
         icon: Icons.chat_bubble_rounded,

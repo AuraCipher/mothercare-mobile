@@ -3,8 +3,11 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:sqflite/sqflite.dart';
 
 import '../../features/chat/models/pending_outgoing_message.dart';
+import 'app_database.dart';
+import 'chat_message_cache_store.dart';
 
 class PendingOutgoingStore {
   PendingOutgoingStore._();
@@ -22,17 +25,6 @@ class PendingOutgoingStore {
     return dir;
   }
 
-  Future<File> _pendingFile(String userId, String roomId) async {
-    _baseDir ??= await getApplicationDocumentsDirectory();
-    final dir = Directory(p.join(_baseDir!.path, 'mcs_chat_cache', userId, 'pending'));
-    if (!await dir.exists()) {
-      await dir.create(recursive: true);
-    }
-    final safeRoom = roomId.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
-    return File(p.join(dir.path, '$safeRoom.json'));
-  }
-
-  /// Copies [source] into app storage so uploads survive temp directory cleanup.
   Future<String?> persistMediaFile({
     required String userId,
     required String localId,
@@ -55,11 +47,17 @@ class PendingOutgoingStore {
     required String roomId,
   }) async {
     try {
-      final file = await _pendingFile(userId, roomId);
-      if (!await file.exists()) return [];
-      final list = jsonDecode(await file.readAsString()) as List<dynamic>;
-      return list
-          .map((e) => PendingOutgoingMessage.fromJson(e as Map<String, dynamic>))
+      final db = await AppDatabase.instance.database;
+      final rows = await db.query(
+        'pending_outgoing',
+        where: 'user_id = ? AND room_id = ?',
+        whereArgs: [userId, roomId],
+        orderBy: 'sort_key ASC',
+      );
+      return rows
+          .map((row) => PendingOutgoingMessage.fromJson(
+                jsonDecode(row['payload'] as String) as Map<String, dynamic>,
+              ))
           .where((item) => item.localId.isNotEmpty)
           .map(_normalizeRestored)
           .toList();
@@ -79,25 +77,34 @@ class PendingOutgoingStore {
     required List<PendingOutgoingMessage> pending,
   }) async {
     try {
-      final file = await _pendingFile(userId, roomId);
-      final keep = pending
-          .where((p) => p.phase != PendingSendPhase.sending)
-          .toList();
-      if (keep.isEmpty) {
-        if (await file.exists()) await file.delete();
-        return;
-      }
-      await file.writeAsString(jsonEncode(keep.map((p) => p.toJson()).toList()));
+      final keep = pending.where((p) => p.phase != PendingSendPhase.sending).toList();
+      final db = await AppDatabase.instance.database;
+      await db.transaction((txn) async {
+        await txn.delete(
+          'pending_outgoing',
+          where: 'user_id = ? AND room_id = ?',
+          whereArgs: [userId, roomId],
+        );
+        if (keep.isEmpty) return;
+        var index = 0;
+        for (final item in keep) {
+          await txn.insert(
+            'pending_outgoing',
+            {
+              'user_id': userId,
+              'room_id': roomId,
+              'local_id': item.localId,
+              'sort_key': index++,
+              'payload': jsonEncode(item.toJson()),
+            },
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        }
+      });
     } catch (_) {}
   }
 
   Future<void> clearUser(String userId) async {
-    try {
-      _baseDir ??= await getApplicationDocumentsDirectory();
-      final dir = Directory(p.join(_baseDir!.path, 'mcs_chat_cache', userId));
-      if (await dir.exists()) {
-        await dir.delete(recursive: true);
-      }
-    } catch (_) {}
+    await ChatMessageCacheStore.instance.clearUser(userId);
   }
 }

@@ -10,6 +10,8 @@ import '../../features/teacher/models/teacher_bootstrap.dart';
 import '../../features/staff/models/staff_bootstrap.dart';
 import 'cache_constants.dart';
 import 'cached_envelope.dart';
+import 'app_database.dart';
+import 'sqlite_kv_cache.dart';
 
 const _kToken = 'mcs_auth_token';
 const _kUser = 'mcs_auth_user';
@@ -26,6 +28,7 @@ class SessionStorage {
       : _storage = storage ?? const FlutterSecureStorage();
 
   final FlutterSecureStorage _storage;
+  final SqliteKvCache _kv = SqliteKvCache.instance;
 
   Future<void> saveSession(LoginResponse response) async {
     await _storage.write(key: _kToken, value: response.token);
@@ -91,6 +94,7 @@ class SessionStorage {
     await _storage.delete(key: _kStaffBootstrapCache);
 
     if (userId != null) {
+      await AppDatabase.instance.clearUser(userId);
       await _storage.delete(
         key: chatLandingCacheKey(scope: ChatLandingScope.student, userId: userId),
       );
@@ -109,17 +113,35 @@ class SessionStorage {
     }
   }
 
+  Future<void> _saveKv(String key, String category, String userId, Map<String, dynamic> data) async {
+    await _kv.put(key: key, category: category, userId: userId, data: data);
+  }
+
+  Future<CachedEnvelope?> _readKv(String key, {String? legacySecureKey}) async {
+    var envelope = await _kv.get(key);
+    if (envelope != null) return envelope;
+    if (legacySecureKey == null) return null;
+    final raw = await _storage.read(key: legacySecureKey);
+    if (raw == null || raw.isEmpty) return null;
+    envelope = CachedEnvelope.parse(raw);
+    if (envelope != null) {
+      final userId = (await readSession())?.payload.id;
+      if (userId != null) {
+        await _kv.put(key: key, category: 'legacy', userId: userId, data: envelope.data);
+        await _storage.delete(key: legacySecureKey);
+      }
+    }
+    return envelope;
+  }
+
   Future<void> saveBootstrapCache(StudentBootstrap bootstrap) async {
-    await _storage.write(
-      key: _kBootstrapCache,
-      value: jsonEncode(CachedEnvelope.wrap(bootstrap.toJson())),
-    );
+    final userId = (await readSession())?.payload.id;
+    if (userId == null) return;
+    await _saveKv(_kBootstrapCache, 'bootstrap_student', userId, bootstrap.toJson());
   }
 
   Future<StudentBootstrap?> readBootstrapCache() async {
-    final raw = await _storage.read(key: _kBootstrapCache);
-    if (raw == null || raw.isEmpty) return null;
-    final envelope = CachedEnvelope.parse(raw);
+    final envelope = await _readKv(_kBootstrapCache, legacySecureKey: _kBootstrapCache);
     if (envelope != null) {
       if (envelope.isExpired(CacheTtls.bootstrap)) return null;
       try {
@@ -128,11 +150,7 @@ class SessionStorage {
         return null;
       }
     }
-    try {
-      return StudentBootstrap.fromJson(jsonDecode(raw) as Map<String, dynamic>);
-    } catch (_) {
-      return null;
-    }
+    return null;
   }
 
   Future<void> saveChatLandingCache(
@@ -142,10 +160,7 @@ class SessionStorage {
     String? branchId,
   }) async {
     final key = chatLandingCacheKey(scope: scope, userId: userId, branchId: branchId);
-    await _storage.write(
-      key: key,
-      value: jsonEncode(CachedEnvelope.wrap(landing.toJson())),
-    );
+    await _saveKv(key, 'landing_${scope.name}', userId, landing.toJson());
   }
 
   Future<ChatLandingData?> readChatLandingCache({
@@ -154,11 +169,10 @@ class SessionStorage {
     String? branchId,
   }) async {
     final key = chatLandingCacheKey(scope: scope, userId: userId, branchId: branchId);
-    var raw = await _storage.read(key: key);
-    raw ??= scope == ChatLandingScope.student ? await _storage.read(key: _kChatLandingCache) : null;
-    if (raw == null || raw.isEmpty) return null;
-
-    final envelope = CachedEnvelope.parse(raw);
+    var envelope = await _readKv(key, legacySecureKey: key);
+    if (envelope == null && scope == ChatLandingScope.student) {
+      envelope = await _readKv(key, legacySecureKey: _kChatLandingCache);
+    }
     if (envelope != null) {
       if (envelope.isExpired(CacheTtls.landing)) return null;
       try {
@@ -167,24 +181,17 @@ class SessionStorage {
         return null;
       }
     }
-    try {
-      return ChatLandingData.fromJson(jsonDecode(raw) as Map<String, dynamic>);
-    } catch (_) {
-      return null;
-    }
+    return null;
   }
 
   Future<void> saveTeacherBootstrapCache(TeacherBootstrap bootstrap) async {
-    await _storage.write(
-      key: _kTeacherBootstrapCache,
-      value: jsonEncode(CachedEnvelope.wrap(bootstrap.toJson())),
-    );
+    final userId = (await readSession())?.payload.id;
+    if (userId == null) return;
+    await _saveKv(_kTeacherBootstrapCache, 'bootstrap_teacher', userId, bootstrap.toJson());
   }
 
   Future<TeacherBootstrap?> readTeacherBootstrapCache() async {
-    final raw = await _storage.read(key: _kTeacherBootstrapCache);
-    if (raw == null || raw.isEmpty) return null;
-    final envelope = CachedEnvelope.parse(raw);
+    final envelope = await _readKv(_kTeacherBootstrapCache, legacySecureKey: _kTeacherBootstrapCache);
     if (envelope != null) {
       if (envelope.isExpired(CacheTtls.bootstrap)) return null;
       try {
@@ -193,24 +200,17 @@ class SessionStorage {
         return null;
       }
     }
-    try {
-      return TeacherBootstrap.fromJson(jsonDecode(raw) as Map<String, dynamic>);
-    } catch (_) {
-      return null;
-    }
+    return null;
   }
 
   Future<void> saveStaffBootstrapCache(StaffBootstrap bootstrap) async {
-    await _storage.write(
-      key: _kStaffBootstrapCache,
-      value: jsonEncode(CachedEnvelope.wrap(bootstrap.toJson())),
-    );
+    final userId = (await readSession())?.payload.id;
+    if (userId == null) return;
+    await _saveKv(_kStaffBootstrapCache, 'bootstrap_staff', userId, bootstrap.toJson());
   }
 
   Future<StaffBootstrap?> readStaffBootstrapCache() async {
-    final raw = await _storage.read(key: _kStaffBootstrapCache);
-    if (raw == null || raw.isEmpty) return null;
-    final envelope = CachedEnvelope.parse(raw);
+    final envelope = await _readKv(_kStaffBootstrapCache, legacySecureKey: _kStaffBootstrapCache);
     if (envelope != null) {
       if (envelope.isExpired(CacheTtls.bootstrap)) return null;
       try {
@@ -219,11 +219,7 @@ class SessionStorage {
         return null;
       }
     }
-    try {
-      return StaffBootstrap.fromJson(jsonDecode(raw) as Map<String, dynamic>);
-    } catch (_) {
-      return null;
-    }
+    return null;
   }
 }
 

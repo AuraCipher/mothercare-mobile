@@ -3,6 +3,7 @@ class CacheTtls {
   static const landing = Duration(minutes: 30);
   static const bootstrap = Duration(hours: 24);
   static const messageRoom = Duration(days: 30);
+  static const dashboard = Duration(hours: 6);
 }
 
 enum ChatLandingScope {

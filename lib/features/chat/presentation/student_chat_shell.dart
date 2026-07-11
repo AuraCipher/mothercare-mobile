@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/push/chat_push_nav.dart';
+import '../../student/presentation/student_chat_nav.dart';
 import '../../../core/push/chat_push_service.dart';
 import '../../../core/storage/chat_message_cache_store.dart';
 import '../../../core/storage/pending_outgoing_store.dart';
@@ -14,6 +14,7 @@ import '../../student/models/student_bootstrap.dart';
 import '../data/chat_socket_service.dart';
 import '../widgets/student_bottom_nav.dart';
 import '../../../core/widgets/universal_header.dart';
+import '../../student/presentation/student_academics_tab.dart';
 import 'student_chat_landing_screen.dart';
 import 'student_placeholder_tab.dart';
 
@@ -56,14 +57,13 @@ class _StudentChatShellState extends State<StudentChatShell> {
       final bootstrap = _bootstrap;
       if (bootstrap == null) return;
       setState(() => _tab = StudentNavTab.chats);
-      openChatRoomFromPush(
+      openStudentChatRoomFromPush(
         context: context,
         session: widget.session,
         socket: _socket,
         roomId: roomId,
         roomName: roomName,
-        academicYearId: bootstrap.academicYearId,
-        groupLabel: bootstrap.groupLabel,
+        bootstrap: bootstrap,
       );
     });
     ChatPushService.instance.bindSession(widget.session.token);
@@ -192,10 +192,9 @@ class _StudentChatShellState extends State<StudentChatShell> {
               subtitle: bootstrap.branchName,
             ),
             Expanded(
-              child: StudentPlaceholderTab(
+              child: StudentAcademicsTab(
+                token: widget.session.token,
                 bootstrap: bootstrap,
-                message: 'Fees, attendance, results, and timetable — coming in Phase 2.',
-                icon: Icons.menu_book_outlined,
               ),
             ),
           ],

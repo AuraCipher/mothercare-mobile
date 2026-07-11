@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:video_player/video_player.dart';
@@ -21,6 +22,7 @@ import '../../../core/widgets/offline_banner.dart';
 import '../../../core/widgets/universal_header.dart';
 import '../models/chat_models.dart';
 import '../models/pending_outgoing_message.dart';
+import '../widgets/chat_document_bubble.dart';
 import '../widgets/chat_image_bubble.dart';
 import '../widgets/chat_video_bubble.dart';
 import '../widgets/chat_voice_bubble.dart';
@@ -498,6 +500,44 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     );
   }
 
+  Future<void> _pickDocument() async {
+    final picked = await FilePicker.platform.pickFiles(withReadStream: false);
+    if (picked == null || picked.files.isEmpty) return;
+    final platformFile = picked.files.single;
+    final path = platformFile.path;
+    if (path == null) return;
+    final file = File(path);
+    await _sendMedia(
+      file: file,
+      fileName: platformFile.name,
+      purpose: 'chat',
+      messageType: 'document',
+      previewLabel: platformFile.name,
+      mimeType: platformFile.extension != null ? _guessMime(platformFile.extension!) : null,
+    );
+  }
+
+  String? _guessMime(String ext) {
+    switch (ext.toLowerCase()) {
+      case 'pdf':
+        return 'application/pdf';
+      case 'doc':
+        return 'application/msword';
+      case 'docx':
+        return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      case 'xls':
+        return 'application/vnd.ms-excel';
+      case 'xlsx':
+        return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      case 'ppt':
+        return 'application/vnd.ms-powerpoint';
+      case 'pptx':
+        return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+      default:
+        return null;
+    }
+  }
+
   void _showAttachmentSheet() {
     showModalBottomSheet<void>(
       context: context,
@@ -526,6 +566,14 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
               onTap: () {
                 Navigator.pop(ctx);
                 _pickVideo();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.insert_drive_file_outlined),
+              title: const Text('Document'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickDocument();
               },
             ),
           ],
@@ -773,6 +821,14 @@ class _MessageBubble extends StatelessWidget {
                             Text('Video', style: TextStyle(color: fg, fontWeight: FontWeight.w600)),
                           ],
                         )
+                else if (message.isDocumentMessage && mediaUrl.isNotEmpty)
+                  ChatDocumentBubble(
+                    url: mediaUrl,
+                    authToken: authToken,
+                    fileName: message.documentFileName,
+                    foregroundColor: fg,
+                    accentColor: isMine ? Colors.white : AppColors.violet,
+                  )
                 else if (message.displayText.isNotEmpty)
                   Text(message.displayText, style: TextStyle(color: fg, fontSize: 15, height: 1.35)),
                 if (showCaption)
