@@ -53,22 +53,26 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
     _load();
   }
 
-  Future<void> _load() async {
-    final cached = await _sessionStorage.readChatLandingCache(
-      scope: ChatLandingScope.student,
-      userId: widget.session.payload.id,
-    );
-    if (cached != null && mounted) {
-      setState(() {
-        _landing = cached;
-        _loading = false;
-        _error = null;
-      });
+  Future<void> _load({bool preferFresh = false}) async {
+    if (!preferFresh) {
+      final cached = await _sessionStorage.readChatLandingCache(
+        scope: ChatLandingScope.student,
+        userId: widget.session.payload.id,
+      );
+      if (cached != null && mounted) {
+        setState(() {
+          _landing = cached;
+          _loading = false;
+          _error = null;
+        });
+      } else if (mounted) {
+        setState(() {
+          _loading = true;
+          _error = null;
+        });
+      }
     } else if (mounted) {
-      setState(() {
-        _loading = true;
-        _error = null;
-      });
+      setState(() => _error = null);
     }
 
     try {
@@ -108,7 +112,21 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
     }
   }
 
+  Future<void> _clearRoomUnreadLocally(String roomId) async {
+    final landing = _landing;
+    if (landing == null) return;
+    final updated = landing.withRoomUnreadCleared(roomId);
+    setState(() => _landing = updated);
+    await _sessionStorage.saveChatLandingCache(
+      updated,
+      scope: ChatLandingScope.student,
+      userId: widget.session.payload.id,
+    );
+    widget.socket.markRead(roomId: roomId);
+  }
+
   void _openRoom(ChatRoomSummary room) {
+    _clearRoomUnreadLocally(room.id);
     final full = _landing?.roomById(room.id) ?? room;
     openStudentChatRoomAndWait(
       context: context,
@@ -116,7 +134,7 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
       socket: widget.socket,
       room: full,
       bootstrap: widget.bootstrap,
-    ).then((_) => _load());
+    ).then((_) => _load(preferFresh: true));
   }
 
   void _showMenu() {
@@ -169,9 +187,10 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
           section: section,
           landing: _landing!,
           academicYearId: widget.bootstrap.academicYearId,
+          onRoomOpened: _clearRoomUnreadLocally,
         ),
       ),
-    ).then((_) => _load());
+    ).then((_) => _load(preferFresh: true));
   }
 
   List<ChatLandingSection> get _visibleSections {
@@ -228,7 +247,7 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
     final refreshed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => ChatContactPickerScreen(
-          token: widget.session.token,
+          currentUserId: widget.session.payload.id,
           fetchContacts: () => _chatApi.fetchStudentContacts(token: widget.session.token),
           openRoom: _openPickerContact,
         ),
@@ -334,69 +353,74 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
     final hasClass = classSection != null && classSection.rooms.isNotEmpty;
 
     if (announcement == null && !hasClass && sections.isEmpty && dmRooms.isEmpty && systemRecords.isEmpty) {
-      return Column(
+      return Stack(
         children: [
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: _load,
-              color: AppColors.violet,
-              child: ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                children: const [
-                  SizedBox(height: 120),
-                  Center(child: Text('No chat rooms yet', style: TextStyle(color: AppColors.textMuted))),
-                ],
-              ),
-            ),
-          ),
-          NewMessageBar(onTap: _openContactPicker),
-        ],
-      );
-    }
-
-    return Column(
-      children: [
-        Expanded(
-          child: RefreshIndicator(
+          RefreshIndicator(
             onRefresh: _load,
             color: AppColors.violet,
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.only(bottom: 8),
-              children: [
-                if (announcement != null)
-                  _SchoolAnnouncementTile(room: announcement, onTap: () => _openRoom(announcement)),
-                if (hasClass)
-                  _ClassCommunityEntryTile(
-                    title: classDisplayName(widget.bootstrap.groupLabel),
-                    unread: classCommunityUnread(classSection),
-                    onTap: () => _openClassCommunity(classSection),
-                  ),
-                if (dmRooms.isNotEmpty) ...[
-                  _sectionHeading('Messages'),
-                  ...dmRooms.map(
-                    (room) => ChatRoomTile(
-                      room: room,
-                      displayName: room.name,
-                      onTap: () => _openRoom(room),
-                    ),
-                  ),
-                ],
-                if (systemRecords.isNotEmpty) ...[
-                  _sectionHeading('School Records'),
-                  ...systemRecords.map(
-                    (room) => StudentSystemRecordTile(
-                      room: room,
-                      onTap: () => _openRoom(room),
-                    ),
-                  ),
-                ],
-                ...sections.expand(_buildGenericSection),
+              padding: const EdgeInsets.only(bottom: 88),
+              children: const [
+                SizedBox(height: 120),
+                Center(child: Text('No chat rooms yet', style: TextStyle(color: AppColors.textMuted))),
               ],
             ),
           ),
+          Positioned(
+            right: 16,
+            bottom: 16,
+            child: NewMessageFab(onTap: _openContactPicker),
+          ),
+        ],
+      );
+    }
+
+    return Stack(
+      children: [
+        RefreshIndicator(
+          onRefresh: _load,
+          color: AppColors.violet,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.only(bottom: 88),
+            children: [
+              if (announcement != null)
+                _SchoolAnnouncementTile(room: announcement, onTap: () => _openRoom(announcement)),
+              if (hasClass)
+                _ClassCommunityEntryTile(
+                  title: classDisplayName(widget.bootstrap.groupLabel),
+                  unread: classCommunityUnread(classSection),
+                  onTap: () => _openClassCommunity(classSection),
+                ),
+              if (dmRooms.isNotEmpty) ...[
+                _sectionHeading('Messages'),
+                ...dmRooms.map(
+                  (room) => ChatRoomTile(
+                    room: room,
+                    displayName: room.name,
+                    onTap: () => _openRoom(room),
+                  ),
+                ),
+              ],
+              if (systemRecords.isNotEmpty) ...[
+                _sectionHeading('School Records'),
+                ...systemRecords.map(
+                  (room) => StudentSystemRecordTile(
+                    room: room,
+                    onTap: () => _openRoom(room),
+                  ),
+                ),
+              ],
+              ...sections.expand(_buildGenericSection),
+            ],
+          ),
         ),
-        NewMessageBar(onTap: _openContactPicker),
+        Positioned(
+          right: 16,
+          bottom: 16,
+          child: NewMessageFab(onTap: _openContactPicker),
+        ),
       ],
     );
   }

@@ -192,4 +192,57 @@ void main() {
     expect(data.contacts.first.roleLabel, 'Principal');
     expect(data.sections.where((s) => s.key == 'classes').first.communities.length, 1);
   });
+
+  test('withRoomUnreadCleared zeros unread across rooms and communities', () {
+    final landing = ChatLandingData.fromJson({
+      'sections': [
+        {
+          'key': 'dm',
+          'title': 'Messages',
+          'rooms': [
+            {'id': 'room-1', 'kind': 'direct_message', 'name': 'Alice', 'unreadCount': 3, 'canPost': true},
+          ],
+        },
+      ],
+      'rooms': [
+        {'id': 'room-1', 'kind': 'direct_message', 'name': 'Alice', 'unreadCount': 3, 'canPost': true},
+        {'id': 'room-2', 'kind': 'group_chat', 'name': 'Math', 'unreadCount': 2, 'canPost': true},
+      ],
+      'communities': [
+        {
+          'groupId': 'g1',
+          'groupLabel': 'Class 1',
+          'displayOrder': 1,
+          'unreadCount': 2,
+          'rooms': [
+            {'id': 'room-2', 'kind': 'group_chat', 'name': 'Math', 'unreadCount': 2, 'canPost': true},
+          ],
+        },
+      ],
+    });
+
+    final cleared = landing.withRoomUnreadCleared('room-2');
+    expect(cleared.rooms.firstWhere((r) => r.id == 'room-2').unreadCount, 0);
+    expect(cleared.communities.first.unreadCount, 0);
+    expect(cleared.rooms.firstWhere((r) => r.id == 'room-1').unreadCount, 3);
+  });
+
+  test('ContactPickerData filteredForUser removes self', () {
+    final data = ContactPickerData.fromJson({
+      'sections': [
+        {
+          'key': 'teachers',
+          'title': 'Teachers',
+          'contacts': [
+            {'userId': 'self', 'name': 'Me', 'roleLabel': 'Teacher'},
+            {'userId': 'other', 'name': 'Peer', 'roleLabel': 'Teacher'},
+          ],
+        },
+      ],
+      'classGroups': [],
+    });
+
+    final filtered = data.filteredForUser('self');
+    expect(filtered.sections.single.contacts.single.userId, 'other');
+  });
 }

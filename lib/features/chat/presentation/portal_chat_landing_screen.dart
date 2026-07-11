@@ -66,25 +66,29 @@ class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
     _load();
   }
 
-  Future<void> _load() async {
-    final cached = await _sessionStorage.readChatLandingCache(
-      scope: widget.kind == PortalChatKind.admin
-          ? ChatLandingScope.admin
-          : ChatLandingScope.teacher,
-      userId: widget.session.payload.id,
-      branchId: widget.branchId,
-    );
-    if (cached != null && mounted) {
-      setState(() {
-        _landing = cached;
-        _loading = false;
-        _error = null;
-      });
+  Future<void> _load({bool preferFresh = false}) async {
+    if (!preferFresh) {
+      final cached = await _sessionStorage.readChatLandingCache(
+        scope: widget.kind == PortalChatKind.admin
+            ? ChatLandingScope.admin
+            : ChatLandingScope.teacher,
+        userId: widget.session.payload.id,
+        branchId: widget.branchId,
+      );
+      if (cached != null && mounted) {
+        setState(() {
+          _landing = cached;
+          _loading = false;
+          _error = null;
+        });
+      } else if (mounted) {
+        setState(() {
+          _loading = true;
+          _error = null;
+        });
+      }
     } else if (mounted) {
-      setState(() {
-        _loading = true;
-        _error = null;
-      });
+      setState(() => _error = null);
     }
 
     try {
@@ -140,7 +144,24 @@ class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
     }
   }
 
+  Future<void> _clearRoomUnreadLocally(String roomId) async {
+    final landing = _landing;
+    if (landing == null) return;
+    final updated = landing.withRoomUnreadCleared(roomId);
+    setState(() => _landing = updated);
+    await _sessionStorage.saveChatLandingCache(
+      updated,
+      scope: widget.kind == PortalChatKind.admin
+          ? ChatLandingScope.admin
+          : ChatLandingScope.teacher,
+      userId: widget.session.payload.id,
+      branchId: widget.branchId,
+    );
+    widget.socket.markRead(roomId: roomId);
+  }
+
   void _openRoom(ChatRoomSummary room) {
+    _clearRoomUnreadLocally(room.id);
     final full = _landing?.roomById(room.id) ?? room;
     final branchId = widget.branchId;
     if (widget.kind == PortalChatKind.teacher &&
@@ -152,7 +173,7 @@ class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
         socket: widget.socket,
         room: full,
         bootstrap: widget.teacherBootstrap!,
-      ).then((_) => _load());
+      ).then((_) => _load(preferFresh: true));
       return;
     }
     Navigator.of(context)
@@ -167,7 +188,7 @@ class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
         ),
       ),
     )
-        .then((_) => _load());
+        .then((_) => _load(preferFresh: true));
   }
 
   void _openClassCommunity(ChatClassCommunity community) {
@@ -183,10 +204,11 @@ class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
           landing: _landing!,
           academicYearId: widget.academicYearId,
           branchId: widget.branchId,
+          onRoomOpened: _clearRoomUnreadLocally,
         ),
       ),
     )
-        .then((_) => _load());
+        .then((_) => _load(preferFresh: true));
   }
 
   Future<void> _openContact(ChatContactSummary contact) async {
@@ -290,7 +312,7 @@ class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
     final refreshed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => ChatContactPickerScreen(
-          token: widget.session.token,
+          currentUserId: widget.session.payload.id,
           fetchContacts: () {
             if (widget.kind == PortalChatKind.admin) {
               return _chatApi.fetchAdminContacts(
@@ -323,17 +345,25 @@ class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Stack(
       children: [
-        LandingHeader(
-          title: widget.headerTitle,
-          onSearch: () {},
-          onMenu: widget.onMenu,
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            LandingHeader(
+              title: widget.headerTitle,
+              onSearch: () {},
+              onMenu: widget.onMenu,
+            ),
+            if (_offline) const OfflineBanner(),
+            Expanded(child: _buildBody()),
+          ],
         ),
-        if (_offline) const OfflineBanner(),
-        Expanded(child: _buildBody()),
-        NewMessageBar(onTap: _openContactPicker),
+        Positioned(
+          right: 16,
+          bottom: 16,
+          child: NewMessageFab(onTap: _openContactPicker),
+        ),
       ],
     );
   }
@@ -372,7 +402,7 @@ class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
       color: AppColors.violet,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.only(bottom: 88),
         children: [
           if (school != null) _PinnedAnnouncementTile(room: school, onTap: () => _openRoom(school)),
           if (teachers != null)

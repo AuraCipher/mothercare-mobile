@@ -45,6 +45,19 @@ class ChatRoomSummary {
         'lastMessageAt': lastMessageAt?.toUtc().toIso8601String(),
         'classGroupId': classGroupId,
       };
+
+  ChatRoomSummary copyWith({int? unreadCount}) {
+    return ChatRoomSummary(
+      id: id,
+      kind: kind,
+      name: name,
+      description: description,
+      canPost: canPost,
+      unreadCount: unreadCount ?? this.unreadCount,
+      lastMessageAt: lastMessageAt,
+      classGroupId: classGroupId,
+    );
+  }
 }
 
 class ChatLandingSection {
@@ -88,6 +101,19 @@ class ChatLandingSection {
         'communities': communities.map((c) => c.toJson()).toList(),
         'contacts': contacts.map((c) => c.toJson()).toList(),
       };
+
+  ChatLandingSection copyWith({
+    List<ChatRoomSummary>? rooms,
+    List<ChatClassCommunity>? communities,
+  }) {
+    return ChatLandingSection(
+      key: key,
+      title: title,
+      rooms: rooms ?? this.rooms,
+      communities: communities ?? this.communities,
+      contacts: contacts,
+    );
+  }
 }
 
 class ChatClassCommunity {
@@ -129,6 +155,19 @@ class ChatClassCommunity {
         'unreadCount': unreadCount,
         'rooms': rooms.map((r) => r.toJson()).toList(),
       };
+
+  ChatClassCommunity copyWith({
+    int? unreadCount,
+    List<ChatRoomSummary>? rooms,
+  }) {
+    return ChatClassCommunity(
+      groupId: groupId,
+      groupLabel: groupLabel,
+      displayOrder: displayOrder,
+      unreadCount: unreadCount ?? this.unreadCount,
+      rooms: rooms ?? this.rooms,
+    );
+  }
 
   ChatLandingSection toSection() {
     return ChatLandingSection(
@@ -242,6 +281,35 @@ class ChatLandingData {
         'communities': communities.map((c) => c.toJson()).toList(),
         'contacts': contacts.map((c) => c.toJson()).toList(),
       };
+
+  /// Clears unread badge for [roomId] across rooms, sections, and communities.
+  ChatLandingData withRoomUnreadCleared(String roomId) {
+    ChatRoomSummary patchRoom(ChatRoomSummary room) =>
+        room.id == roomId ? room.copyWith(unreadCount: 0) : room;
+
+    final nextRooms = rooms.map(patchRoom).toList();
+    final nextCommunities = communities.map((community) {
+      final nextCommunityRooms = community.rooms.map(patchRoom).toList();
+      final unread = nextCommunityRooms.fold<int>(0, (sum, r) => sum + r.unreadCount);
+      return community.copyWith(rooms: nextCommunityRooms, unreadCount: unread);
+    }).toList();
+    final nextSections = sections.map((section) {
+      final nextSectionRooms = section.rooms.map(patchRoom).toList();
+      final nextSectionCommunities = section.communities.map((community) {
+        final nextCommunityRooms = community.rooms.map(patchRoom).toList();
+        final unread = nextCommunityRooms.fold<int>(0, (sum, r) => sum + r.unreadCount);
+        return community.copyWith(rooms: nextCommunityRooms, unreadCount: unread);
+      }).toList();
+      return section.copyWith(rooms: nextSectionRooms, communities: nextSectionCommunities);
+    }).toList();
+
+    return ChatLandingData(
+      sections: nextSections,
+      rooms: nextRooms,
+      communities: nextCommunities,
+      contacts: contacts,
+    );
+  }
 }
 
 class ChatMessageSender {
@@ -548,6 +616,32 @@ class ContactPickerData {
     return ContactPickerData(
       sections: sectionsRaw.map((e) => ContactPickerSection.fromJson(e as Map<String, dynamic>)).toList(),
       classGroups: groupsRaw.map((e) => ContactPickerClassGroup.fromJson(e as Map<String, dynamic>)).toList(),
+    );
+  }
+
+  ContactPickerData filteredForUser(String userId) {
+    bool keep(ContactPickerContact c) => c.userId.isNotEmpty && c.userId != userId;
+    return ContactPickerData(
+      sections: sections
+          .map(
+            (s) => ContactPickerSection(
+              key: s.key,
+              title: s.title,
+              contacts: s.contacts.where(keep).toList(),
+            ),
+          )
+          .where((s) => s.contacts.isNotEmpty)
+          .toList(),
+      classGroups: classGroups
+          .map(
+            (g) => ContactPickerClassGroup(
+              groupId: g.groupId,
+              groupLabel: g.groupLabel,
+              contacts: g.contacts.where(keep).toList(),
+            ),
+          )
+          .where((g) => g.contacts.isNotEmpty)
+          .toList(),
     );
   }
 }

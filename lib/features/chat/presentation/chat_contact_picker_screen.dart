@@ -11,13 +11,13 @@ typedef ContactPickerOpenRoom = Future<void> Function(ContactPickerContact conta
 class ChatContactPickerScreen extends StatefulWidget {
   const ChatContactPickerScreen({
     super.key,
-    required this.token,
+    required this.currentUserId,
     required this.fetchContacts,
     required this.openRoom,
     this.title = 'New message',
   });
 
-  final String token;
+  final String currentUserId;
   final Future<ContactPickerData> Function() fetchContacts;
   final ContactPickerOpenRoom openRoom;
   final String title;
@@ -47,7 +47,7 @@ class _ChatContactPickerScreenState extends State<ChatContactPickerScreen> {
       final data = await widget.fetchContacts();
       if (!mounted) return;
       setState(() {
-        _data = data;
+        _data = data.filteredForUser(widget.currentUserId);
         _loading = false;
       });
     } on ApiException catch (e) {

@@ -9,8 +9,10 @@ import '../../../core/widgets/universal_header.dart';
 import '../widgets/room_list_icon.dart';
 import 'chat_room_screen.dart';
 
+typedef ClassCommunityRoomOpened = void Function(String roomId);
+
 /// Drill-down: class name → Class Announcement + subject Groups.
-class ClassCommunityScreen extends StatelessWidget {
+class ClassCommunityScreen extends StatefulWidget {
   const ClassCommunityScreen({
     super.key,
     required this.session,
@@ -20,6 +22,7 @@ class ClassCommunityScreen extends StatelessWidget {
     required this.landing,
     this.academicYearId,
     this.branchId,
+    this.onRoomOpened,
   });
 
   final StoredSession session;
@@ -29,18 +32,47 @@ class ClassCommunityScreen extends StatelessWidget {
   final ChatLandingData landing;
   final String? academicYearId;
   final String? branchId;
+  final ClassCommunityRoomOpened? onRoomOpened;
 
-  void _openRoom(BuildContext context, ChatRoomSummary room) {
-    final full = landing.roomById(room.id) ?? room;
+  @override
+  State<ClassCommunityScreen> createState() => _ClassCommunityScreenState();
+}
+
+class _ClassCommunityScreenState extends State<ClassCommunityScreen> {
+  late ChatLandingSection _section;
+
+  @override
+  void initState() {
+    super.initState();
+    _section = widget.section;
+  }
+
+  void _markRoomReadLocally(String roomId) {
+    widget.onRoomOpened?.call(roomId);
+    widget.socket.markRead(roomId: roomId);
+    setState(() => _section = _sectionWithClearedRoom(roomId));
+  }
+
+  ChatLandingSection _sectionWithClearedRoom(String roomId) {
+    return widget.section.copyWith(
+      rooms: widget.section.rooms
+          .map((r) => r.id == roomId ? r.copyWith(unreadCount: 0) : r)
+          .toList(),
+    );
+  }
+
+  void _openRoom(ChatRoomSummary room) {
+    _markRoomReadLocally(room.id);
+    final full = widget.landing.roomById(room.id) ?? room;
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => ChatRoomScreen(
-          session: session,
-          socket: socket,
-          room: full,
-          groupLabel: groupLabel,
-          academicYearId: academicYearId,
-          branchId: branchId,
+          session: widget.session,
+          socket: widget.socket,
+          room: full.copyWith(unreadCount: 0),
+          groupLabel: widget.groupLabel,
+          academicYearId: widget.academicYearId,
+          branchId: widget.branchId,
         ),
       ),
     );
@@ -48,8 +80,8 @@ class ClassCommunityScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final announcements = classAnnouncementRooms(section);
-    final groups = classGroupRooms(section);
+    final announcements = classAnnouncementRooms(_section);
+    final groups = classGroupRooms(_section);
     final announcement = announcements.isNotEmpty ? announcements.first : null;
     final groupCount = groups.length;
     final subtitle = groupCount > 0
@@ -62,7 +94,7 @@ class ClassCommunityScreen extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           UniversalHeader(
-            title: classDisplayName(groupLabel),
+            title: classDisplayName(widget.groupLabel),
             subtitle: subtitle,
             showBack: true,
           ),
@@ -75,7 +107,7 @@ class ClassCommunityScreen extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     child: _PinnedClassAnnouncementCard(
                       room: announcement,
-                      onTap: () => _openRoom(context, announcement),
+                      onTap: () => _openRoom(announcement),
                     ),
                   ),
                 if (groups.isNotEmpty) ...[
@@ -114,7 +146,7 @@ class ClassCommunityScreen extends StatelessWidget {
                           (room) => ChatRoomTile(
                             room: room,
                             displayName: room.name,
-                            onTap: () => _openRoom(context, room),
+                            onTap: () => _openRoom(room),
                           ),
                         ),
                       ],

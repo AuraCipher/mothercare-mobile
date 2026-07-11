@@ -84,23 +84,33 @@ class _StaffCampusTabState extends State<StaffCampusTab> with SingleTickerProvid
 
   Widget _statCard(String label, String value) {
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
-            const SizedBox(height: 4),
-            Text(value, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
-          ],
-        ),
+      child: _statTile(label, value),
+    );
+  }
+
+  Widget _statTile(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+          const SizedBox(height: 4),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
+        ],
       ),
     );
+  }
+
+  String _formatDate(dynamic value) {
+    if (value == null) return '';
+    final text = value.toString();
+    return text.length >= 10 ? text.substring(0, 10) : text;
   }
 
   @override
@@ -212,9 +222,9 @@ class _StaffCampusTabState extends State<StaffCampusTab> with SingleTickerProvid
       children: [
         Text('Fees · ${_fees?['month']}/${_fees?['year']}', style: const TextStyle(fontWeight: FontWeight.w600)),
         const SizedBox(height: 12),
-        _statCard('Collected', _money(_fees?['totalCollected'])),
+        _statTile('Collected', _money(_fees?['totalCollected'])),
         const SizedBox(height: 8),
-        _statCard('Due', _money(_fees?['totalDue'])),
+        _statTile('Due', _money(_fees?['totalDue'])),
         const SizedBox(height: 8),
         Text(
           '${_fees?['pendingCount'] ?? 0} pending · ${_fees?['collectionRate'] ?? 0}% collected',
@@ -231,7 +241,7 @@ class _StaffCampusTabState extends State<StaffCampusTab> with SingleTickerProvid
     return ListView.separated(
       padding: const EdgeInsets.all(16),
       itemCount: _staff.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      separatorBuilder: (_, index) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
         final member = _staff[index];
         return Container(
@@ -263,7 +273,7 @@ class _StaffCampusTabState extends State<StaffCampusTab> with SingleTickerProvid
     return ListView.separated(
       padding: const EdgeInsets.all(16),
       itemCount: _results.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      separatorBuilder: (_, index) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
         final session = _results[index];
         return Container(
@@ -278,7 +288,7 @@ class _StaffCampusTabState extends State<StaffCampusTab> with SingleTickerProvid
             children: [
               Text(session['name'] as String? ?? 'Exam', style: const TextStyle(fontWeight: FontWeight.w600)),
               Text(
-                '${session['examCount'] ?? 0} exams · ${session['startDate'] != null ? String(session['startDate']).slice(0, 10) : ''}',
+                '${session['examCount'] ?? 0} exams · ${_formatDate(session['startDate'])}',
                 style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
               ),
             ],
