@@ -8,9 +8,13 @@ import '../models/chat_models.dart';
 class ChatSocketService {
   io.Socket? _socket;
   final _messageController = StreamController<ChatMessage>.broadcast();
+  final _deletedController = StreamController<String>.broadcast();
+  final _updatedController = StreamController<ChatMessage>.broadcast();
   final _errorController = StreamController<String>.broadcast();
 
   Stream<ChatMessage> get onMessage => _messageController.stream;
+  Stream<String> get onMessageDeleted => _deletedController.stream;
+  Stream<ChatMessage> get onMessageUpdated => _updatedController.stream;
   Stream<String> get onError => _errorController.stream;
   bool get isConnected => _socket?.connected ?? false;
 
@@ -42,6 +46,17 @@ class ChatSocketService {
         if (data is Map) {
           final map = Map<String, dynamic>.from(data);
           _messageController.add(ChatMessage.fromSocket(map));
+        }
+      })
+      ..on('chat:message:deleted', (data) {
+        if (data is Map && data['id'] != null) {
+          _deletedController.add(data['id'].toString());
+        }
+      })
+      ..on('chat:message:updated', (data) {
+        if (data is Map) {
+          final map = Map<String, dynamic>.from(data);
+          _updatedController.add(ChatMessage.fromSocket(map));
         }
       })
       ..on('chat:error', (data) {
@@ -87,6 +102,8 @@ class ChatSocketService {
   void dispose() {
     disconnect();
     _messageController.close();
+    _deletedController.close();
+    _updatedController.close();
     _errorController.close();
   }
 }

@@ -9,7 +9,6 @@ import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:video_player/video_player.dart';
 
-import '../../../config/app_config.dart';
 import '../../../core/api/api_exception.dart';
 import '../../../core/storage/session_storage.dart';
 import '../../../core/theme/app_theme.dart';
@@ -26,7 +25,10 @@ import '../widgets/chat_document_bubble.dart';
 import '../widgets/chat_image_bubble.dart';
 import '../widgets/chat_video_bubble.dart';
 import '../widgets/chat_voice_bubble.dart';
-import '../widgets/chat_composer_bar.dart';
+import '../data/chat_media_download.dart';
+import '../utils/chat_media_url.dart';
+import '../widgets/chat_image_viewer_screen.dart';
+import '../widgets/chat_message_actions_sheet.dart';
 import '../widgets/pending_message_bubble.dart';
 import '../widgets/voice_note_recorder.dart';
 
@@ -75,6 +77,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   double _voiceLockDragUp = 0;
   late final String _userId;
   StreamSubscription<ChatMessage>? _messageSub;
+  StreamSubscription<String>? _deletedSub;
+  StreamSubscription<ChatMessage>? _updatedSub;
   StreamSubscription<String>? _errorSub;
 
   @override
@@ -87,6 +91,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     widget.socket.joinRoom(widget.room.id);
     widget.socket.markRead(roomId: widget.room.id);
     _messageSub = widget.socket.onMessage.listen(_onSocketMessage);
+    _deletedSub = widget.socket.onMessageDeleted.listen(_onSocketMessageDeleted);
+    _updatedSub = widget.socket.onMessageUpdated.listen(_onSocketMessageUpdated);
     _errorSub = widget.socket.onError.listen(_onSocketError);
     _scrollController.addListener(_onScroll);
     _hydrateFromCache().then((_) => _loadMessages());
@@ -96,6 +102,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   void dispose() {
     _persistPending();
     _messageSub?.cancel();
+    _deletedSub?.cancel();
+    _updatedSub?.cancel();
     _errorSub?.cancel();
     _voiceRecorder.dispose();
     _scrollController.dispose();
@@ -118,6 +126,28 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     _persistMessages();
     _persistPending();
     _scrollToBottom();
+  }
+
+  void _onSocketMessageDeleted(String messageId) {
+    final idx = _messages.indexWhere((m) => m.id == messageId);
+    if (idx < 0) return;
+    setState(() {
+      _messages[idx] = _messages[idx].copyWith(isDeleted: true, content: null);
+    });
+    _persistMessages();
+  }
+
+  void _onSocketMessageUpdated(ChatMessage message) {
+    if (message.roomId != widget.room.id) return;
+    final idx = _messages.indexWhere((m) => m.id == message.id);
+    if (idx < 0) return;
+    setState(() {
+      _messages[idx] = _messages[idx].copyWith(
+        content: message.content,
+        isDeleted: message.isDeleted,
+      );
+    });
+    _persistMessages();
   }
 
   void _onSocketError(String message) {
@@ -593,14 +623,140 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     });
   }
 
-  String _mediaUrl(ChatMessage message) {
-    final url = message.mediaFile?.url ?? '';
-    if (url.startsWith('http')) return url;
-    if (url.isNotEmpty) return '${AppConfig.apiBaseUrl}$url';
-    if (message.mediaFile?.id.isNotEmpty == true) {
-      return '${AppConfig.apiBaseUrl}/api/uploads/${message.mediaFile!.id}';
+  String _mediaUrl(ChatMessage message) => resolveChatMediaUrl(message.mediaFile);
+
+  Future<void> _openImageViewer(String url) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => ChatImageViewerScreen(url: url, authToken: widget.session.token),
+      ),
+    );
+  }
+
+  Future<void> _handleMessageLongPress(ChatMessage message, bool isMine) async {
+    final actions = availableMessageActions(
+      message: message,
+      isMine: isMine,
+      canPost: widget.room.canPost,
+    );
+    if (actions.isEmpty) return;
+
+    final action = await showChatMessageActionsSheet(context, actions: actions);
+    if (!mounted || action == null) return;
+
+    switch (action) {
+      case ChatMessageAction.save:
+        await _saveMessageMedia(message);
+      case ChatMessageAction.edit:
+        await _editMessage(message);
+      case ChatMessageAction.delete:
+        await _deleteMessage(message);
     }
-    return '';
+  }
+
+  Future<void> _saveMessageMedia(ChatMessage message) async {
+    final url = _mediaUrl(message);
+    if (url.isEmpty) {
+      _showError('No media to save');
+      return;
+    }
+    try {
+      final result = await downloadChatMedia(
+        url: url,
+        authToken: widget.session.token,
+        message: message,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Saved ${result.fileName}')),
+      );
+      if (message.isDocumentMessage) {
+        await openDownloadedMedia(result);
+      }
+    } on ApiException catch (e) {
+      _showError(e.message);
+    } catch (_) {
+      _showError('Could not save media');
+    }
+  }
+
+  Future<void> _deleteMessage(ChatMessage message) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete message?'),
+        content: const Text('This message will be removed for everyone in the chat.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await _chatApi.deleteMessage(token: widget.session.token, messageId: message.id);
+      if (!mounted) return;
+      setState(() {
+        final idx = _messages.indexWhere((m) => m.id == message.id);
+        if (idx >= 0) {
+          _messages[idx] = _messages[idx].copyWith(isDeleted: true, content: null);
+        }
+      });
+      await _persistMessages();
+    } on ApiException catch (e) {
+      _showError(e.message);
+    } catch (_) {
+      _showError('Could not delete message');
+    }
+  }
+
+  Future<void> _editMessage(ChatMessage message) async {
+    final controller = TextEditingController(text: message.content ?? '');
+    final next = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Edit message'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLines: 4,
+          decoration: const InputDecoration(hintText: 'Message'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (next == null || next.isEmpty || next == message.content?.trim()) return;
+
+    try {
+      final updated = await _chatApi.updateMessage(
+        token: widget.session.token,
+        messageId: message.id,
+        content: next,
+      );
+      if (!mounted) return;
+      setState(() {
+        final idx = _messages.indexWhere((m) => m.id == message.id);
+        if (idx >= 0) _messages[idx] = updated;
+      });
+      await _persistMessages();
+    } on ApiException catch (e) {
+      _showError(e.message);
+    } catch (_) {
+      _showError('Could not update message');
+    }
   }
 
   @override
@@ -711,6 +867,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           isMine: isMine,
           mediaUrl: _mediaUrl(message),
           authToken: widget.session.token,
+          canPost: widget.room.canPost,
+          onLongPress: () => _handleMessageLongPress(message, isMine),
+          onImageTap: message.isImageMessage ? () => _openImageViewer(_mediaUrl(message)) : null,
         );
       },
     );
@@ -741,12 +900,18 @@ class _MessageBubble extends StatelessWidget {
     required this.isMine,
     required this.mediaUrl,
     required this.authToken,
+    required this.canPost,
+    this.onLongPress,
+    this.onImageTap,
   });
 
   final ChatMessage message;
   final bool isMine;
   final String mediaUrl;
   final String authToken;
+  final bool canPost;
+  final VoidCallback? onLongPress;
+  final VoidCallback? onImageTap;
 
   @override
   Widget build(BuildContext context) {
@@ -754,10 +919,10 @@ class _MessageBubble extends StatelessWidget {
     final align = isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start;
     final bg = isMine ? AppColors.violet : AppColors.surface;
     final fg = isMine ? Colors.white : AppColors.textPrimary;
-    final isImage = message.isImageMessage && mediaUrl.isNotEmpty;
+    final isImage = message.isImageMessage && mediaUrl.isNotEmpty && !message.isDeleted;
     final showCaption = message.isImageMessage && message.hasCaption;
 
-    return Padding(
+    final bubble = Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
         crossAxisAlignment: align,
@@ -791,6 +956,7 @@ class _MessageBubble extends StatelessWidget {
                   ChatImageBubble(
                     url: mediaUrl,
                     authToken: authToken,
+                    onTap: onImageTap,
                   )
                 else if (message.type == 'voice_note' ||
                     message.type == 'audio' ||
@@ -852,5 +1018,8 @@ class _MessageBubble extends StatelessWidget {
         ],
       ),
     );
+
+    if (onLongPress == null) return bubble;
+    return GestureDetector(onLongPress: onLongPress, behavior: HitTestBehavior.opaque, child: bubble);
   }
 }

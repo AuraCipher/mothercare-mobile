@@ -155,6 +155,26 @@ class ChatApi {
     return data.map((e) => ChatMessage.fromJson(e as Map<String, dynamic>)).toList();
   }
 
+  Future<void> deleteMessage({
+    required String token,
+    required String messageId,
+  }) async {
+    await _client.deleteJson('/chat/messages/$messageId', token: token);
+  }
+
+  Future<ChatMessage> updateMessage({
+    required String token,
+    required String messageId,
+    required String content,
+  }) async {
+    final body = await _client.patchJson(
+      '/chat/messages/$messageId',
+      token: token,
+      body: {'content': content},
+    );
+    return ChatMessage.fromJson(body['data'] as Map<String, dynamic>? ?? {});
+  }
+
   Future<ContactPickerData> fetchStudentContacts({required String token}) async {
     final body = await _client.getJson('/student/chat/contacts', token: token);
     return ContactPickerData.fromJson(body['data'] as Map<String, dynamic>? ?? {});

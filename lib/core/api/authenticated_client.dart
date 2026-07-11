@@ -67,6 +67,31 @@ class AuthenticatedClient {
     }
   }
 
+  Future<Map<String, dynamic>> patchJson(
+    String path, {
+    required String token,
+    Map<String, dynamic>? body,
+  }) async {
+    final uri = Uri.parse('$_baseUrl$path');
+    try {
+      final res = await _client
+          .patch(
+            uri,
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: body == null ? null : jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      return _decode(res);
+    } on TimeoutException {
+      throw ApiException('No internet connection. Check your network.');
+    }
+  }
+
   Future<Map<String, dynamic>> deleteJson(
     String path, {
     required String token,

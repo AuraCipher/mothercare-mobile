@@ -472,6 +472,23 @@ class ChatMessage {
         'isDeleted': isDeleted,
         if (mediaFile != null) 'mediaFile': mediaFile!.toJson(),
       };
+
+  ChatMessage copyWith({
+    String? content,
+    bool? isDeleted,
+  }) {
+    return ChatMessage(
+      id: id,
+      roomId: roomId,
+      type: type,
+      title: title,
+      content: content ?? this.content,
+      sender: sender,
+      createdAt: createdAt,
+      isDeleted: isDeleted ?? this.isDeleted,
+      mediaFile: mediaFile,
+    );
+  }
 }
 
 /// Maps legacy backend labels to current copy.
@@ -516,6 +533,41 @@ List<ChatRoomSummary> classGroupRooms(ChatLandingSection section) =>
 
 int classCommunityUnread(ChatLandingSection section) =>
     section.rooms.fold<int>(0, (sum, r) => sum + r.unreadCount);
+
+/// Contacts that must not appear as rows on chat landing (picker-only).
+List<ChatContactSummary> landingVisibleContacts(
+  List<ChatContactSummary> contacts,
+  String currentUserId,
+) {
+  return contacts
+      .where((c) => c.userId.isNotEmpty && c.userId != currentUserId && c.role != 'super_admin')
+      .toList();
+}
+
+/// Hides self/CEO DM threads from landing lists; existing threads stay in picker/history.
+List<ChatRoomSummary> landingVisibleDmRooms({
+  required List<ChatRoomSummary> rooms,
+  required String currentUserId,
+  List<ChatContactSummary> contacts = const [],
+}) {
+  final hiddenDmRoomIds = <String>{
+    for (final contact in contacts)
+      if (contact.userId == currentUserId || contact.role == 'super_admin')
+        if (contact.dmRoomId != null && contact.dmRoomId!.isNotEmpty) contact.dmRoomId!,
+  };
+  final hiddenNames = <String>{
+    for (final contact in contacts)
+      if (contact.userId == currentUserId || contact.role == 'super_admin')
+        contact.name.trim().toLowerCase(),
+  };
+
+  return rooms.where((room) {
+    if (room.kind != 'direct_message') return true;
+    if (hiddenDmRoomIds.contains(room.id)) return false;
+    if (hiddenNames.contains(room.name.trim().toLowerCase())) return false;
+    return true;
+  }).toList();
+}
 
 List<ChatLandingSection> groupRoomsForStaffLanding(List<ChatRoomSummary> rooms) {
   List<ChatRoomSummary> pick(List<String> kinds) =>
