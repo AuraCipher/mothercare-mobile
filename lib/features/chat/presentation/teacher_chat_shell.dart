@@ -15,7 +15,7 @@ import '../../teacher/models/teacher_bootstrap.dart';
 import '../data/chat_socket_service.dart';
 import '../widgets/portal_bottom_nav.dart';
 import '../../teacher/presentation/teacher_workspace_tab.dart';
-import 'portal_profile_tab.dart';
+import '../../teacher/presentation/teacher_profile_tab.dart';
 import 'portal_chat_landing_screen.dart';
 
 class TeacherChatShell extends StatefulWidget {
@@ -239,14 +239,9 @@ class _TeacherChatShellState extends State<TeacherChatShell> {
               subtitle: bootstrap.isHod ? 'Head of Department' : 'Teacher',
             ),
             Expanded(
-              child: PortalProfileTab(
-                userName: bootstrap.userName,
-                branchName: bootstrap.branchName,
-                academicYearLabel: bootstrap.academicYearLabel,
-                roleLabel: bootstrap.isHod ? 'Teacher · HOD' : 'Teacher',
-                extraLines: [
-                  if (bootstrap.portalAccess != 'FULL') 'Portal access: ${bootstrap.portalAccess}',
-                ],
+              child: TeacherProfileTab(
+                token: widget.session.token,
+                bootstrap: bootstrap,
                 onLogout: _logout,
               ),
             ),

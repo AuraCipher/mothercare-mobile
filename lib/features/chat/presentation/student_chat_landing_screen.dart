@@ -17,7 +17,9 @@ import '../widgets/room_list_icon.dart';
 import '../../../testing/e2e_keys.dart';
 import '../../student/presentation/student_chat_nav.dart';
 import 'student_system_room_screen.dart';
+import 'chat_contact_picker_screen.dart';
 import 'class_community_screen.dart';
+import '../widgets/new_message_bar.dart';
 
 class StudentChatLandingScreen extends StatefulWidget {
   const StudentChatLandingScreen({
@@ -193,6 +195,48 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
     return sorted;
   }
 
+  List<ChatRoomSummary> get _dmRooms {
+    if (_landing == null) return [];
+    final section = _landing!.sections.where((s) => s.key == 'dm').firstOrNull;
+    if (section != null && section.rooms.isNotEmpty) return section.rooms;
+    return _landing!.rooms.where((r) => r.kind == 'direct_message').toList();
+  }
+
+  Future<void> _openPickerContact(ContactPickerContact contact) async {
+    ChatRoomSummary room;
+    if (contact.dmRoomId != null && contact.dmRoomId!.isNotEmpty) {
+      room = _landing?.roomById(contact.dmRoomId!) ??
+          ChatRoomSummary(
+            id: contact.dmRoomId!,
+            kind: 'direct_message',
+            name: contact.name,
+            canPost: true,
+            unreadCount: 0,
+          );
+    } else {
+      room = await _chatApi.openStudentDirectMessage(
+        token: widget.session.token,
+        participantUserId: contact.userId,
+        contactName: contact.name,
+      );
+    }
+    if (!mounted) return;
+    _openRoom(room);
+  }
+
+  Future<void> _openContactPicker() async {
+    final refreshed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => ChatContactPickerScreen(
+          token: widget.session.token,
+          fetchContacts: () => _chatApi.fetchStudentContacts(token: widget.session.token),
+          openRoom: _openPickerContact,
+        ),
+      ),
+    );
+    if (refreshed == true) _load();
+  }
+
   List<ChatContactSummary> get _contacts {
     if (_landing == null) return [];
     if (_landing!.contacts.isNotEmpty) return _landing!.contacts;
@@ -285,57 +329,75 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
     final announcement = _announcementRoom;
     final classSection = _classSection;
     final sections = _visibleSections;
-    final contacts = _contacts;
+    final dmRooms = _dmRooms;
     final systemRecords = _systemRecordRooms;
     final hasClass = classSection != null && classSection.rooms.isNotEmpty;
 
-    if (announcement == null && !hasClass && sections.isEmpty && contacts.isEmpty && systemRecords.isEmpty) {
-      return RefreshIndicator(
-        onRefresh: _load,
-        color: AppColors.violet,
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          children: const [
-            SizedBox(height: 120),
-            Center(child: Text('No chat rooms yet', style: TextStyle(color: AppColors.textMuted))),
-          ],
-        ),
+    if (announcement == null && !hasClass && sections.isEmpty && dmRooms.isEmpty && systemRecords.isEmpty) {
+      return Column(
+        children: [
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _load,
+              color: AppColors.violet,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: const [
+                  SizedBox(height: 120),
+                  Center(child: Text('No chat rooms yet', style: TextStyle(color: AppColors.textMuted))),
+                ],
+              ),
+            ),
+          ),
+          NewMessageBar(onTap: _openContactPicker),
+        ],
       );
     }
 
-    return RefreshIndicator(
-      onRefresh: _load,
-      color: AppColors.violet,
-      child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.only(bottom: 8),
-        children: [
-          if (announcement != null)
-            _SchoolAnnouncementTile(room: announcement, onTap: () => _openRoom(announcement)),
-          if (hasClass)
-            _ClassCommunityEntryTile(
-              title: classDisplayName(widget.bootstrap.groupLabel),
-              unread: classCommunityUnread(classSection),
-              onTap: () => _openClassCommunity(classSection),
+    return Column(
+      children: [
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _load,
+            color: AppColors.violet,
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.only(bottom: 8),
+              children: [
+                if (announcement != null)
+                  _SchoolAnnouncementTile(room: announcement, onTap: () => _openRoom(announcement)),
+                if (hasClass)
+                  _ClassCommunityEntryTile(
+                    title: classDisplayName(widget.bootstrap.groupLabel),
+                    unread: classCommunityUnread(classSection),
+                    onTap: () => _openClassCommunity(classSection),
+                  ),
+                if (dmRooms.isNotEmpty) ...[
+                  _sectionHeading('Messages'),
+                  ...dmRooms.map(
+                    (room) => ChatRoomTile(
+                      room: room,
+                      displayName: room.name,
+                      onTap: () => _openRoom(room),
+                    ),
+                  ),
+                ],
+                if (systemRecords.isNotEmpty) ...[
+                  _sectionHeading('School Records'),
+                  ...systemRecords.map(
+                    (room) => StudentSystemRecordTile(
+                      room: room,
+                      onTap: () => _openRoom(room),
+                    ),
+                  ),
+                ],
+                ...sections.expand(_buildGenericSection),
+              ],
             ),
-          if (contacts.isNotEmpty) ...[
-            _sectionHeading('Contacts'),
-            ...contacts.map(
-              (c) => _StudentContactRow(contact: c, onTap: () => _openContact(c)),
-            ),
-          ],
-          if (systemRecords.isNotEmpty) ...[
-            _sectionHeading('School Records'),
-            ...systemRecords.map(
-              (room) => StudentSystemRecordTile(
-                room: room,
-                onTap: () => _openRoom(room),
-              ),
-            ),
-          ],
-          ...sections.expand(_buildGenericSection),
-        ],
-      ),
+          ),
+        ),
+        NewMessageBar(onTap: _openContactPicker),
+      ],
     );
   }
 

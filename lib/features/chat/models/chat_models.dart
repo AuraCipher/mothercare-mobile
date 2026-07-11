@@ -464,3 +464,90 @@ List<ChatLandingSection> groupRoomsForStaffLanding(List<ChatRoomSummary> rooms) 
     ChatLandingSection(key: 'dm', title: 'Messages', rooms: pick(['direct_message'])),
   ].where((s) => s.rooms.isNotEmpty).toList();
 }
+
+class ContactPickerContact {
+  const ContactPickerContact({
+    required this.userId,
+    required this.name,
+    required this.roleLabel,
+    this.subtitle,
+    this.dmRoomId,
+  });
+
+  final String userId;
+  final String name;
+  final String roleLabel;
+  final String? subtitle;
+  final String? dmRoomId;
+
+  factory ContactPickerContact.fromJson(Map<String, dynamic> json) {
+    return ContactPickerContact(
+      userId: json['userId'] as String? ?? '',
+      name: json['name'] as String? ?? '',
+      roleLabel: json['roleLabel'] as String? ?? '',
+      subtitle: json['subtitle'] as String?,
+      dmRoomId: json['dmRoomId'] as String?,
+    );
+  }
+}
+
+class ContactPickerSection {
+  const ContactPickerSection({
+    required this.key,
+    required this.title,
+    required this.contacts,
+  });
+
+  final String key;
+  final String title;
+  final List<ContactPickerContact> contacts;
+
+  factory ContactPickerSection.fromJson(Map<String, dynamic> json) {
+    final raw = json['contacts'] as List<dynamic>? ?? [];
+    return ContactPickerSection(
+      key: json['key'] as String? ?? '',
+      title: json['title'] as String? ?? '',
+      contacts: raw.map((e) => ContactPickerContact.fromJson(e as Map<String, dynamic>)).toList(),
+    );
+  }
+}
+
+class ContactPickerClassGroup {
+  const ContactPickerClassGroup({
+    required this.groupId,
+    required this.groupLabel,
+    required this.contacts,
+  });
+
+  final String groupId;
+  final String groupLabel;
+  final List<ContactPickerContact> contacts;
+
+  factory ContactPickerClassGroup.fromJson(Map<String, dynamic> json) {
+    final raw = json['contacts'] as List<dynamic>? ?? [];
+    return ContactPickerClassGroup(
+      groupId: json['groupId'] as String? ?? '',
+      groupLabel: json['groupLabel'] as String? ?? '',
+      contacts: raw.map((e) => ContactPickerContact.fromJson(e as Map<String, dynamic>)).toList(),
+    );
+  }
+}
+
+class ContactPickerData {
+  const ContactPickerData({
+    required this.sections,
+    required this.classGroups,
+  });
+
+  final List<ContactPickerSection> sections;
+  final List<ContactPickerClassGroup> classGroups;
+
+  factory ContactPickerData.fromJson(Map<String, dynamic> json) {
+    final sectionsRaw = json['sections'] as List<dynamic>? ?? [];
+    final groupsRaw = json['classGroups'] as List<dynamic>? ?? [];
+    return ContactPickerData(
+      sections: sectionsRaw.map((e) => ContactPickerSection.fromJson(e as Map<String, dynamic>)).toList(),
+      classGroups: groupsRaw.map((e) => ContactPickerClassGroup.fromJson(e as Map<String, dynamic>)).toList(),
+    );
+  }
+}

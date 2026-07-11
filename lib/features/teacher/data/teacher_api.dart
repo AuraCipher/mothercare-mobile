@@ -90,4 +90,9 @@ class TeacherApi {
     }
     return [];
   }
+
+  Future<Map<String, dynamic>> fetchProfile({required String token}) async {
+    final body = await _client.getJson('/teacher/profile', token: token);
+    return body['data'] as Map<String, dynamic>? ?? {};
+  }
 }

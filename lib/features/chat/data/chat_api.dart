@@ -147,11 +147,42 @@ class ChatApi {
       '/chat/rooms/$roomId/messages',
       token: token,
       query: {
-        'cursor': ?cursor,
+        if (cursor != null) 'cursor': cursor,
         'limit': '$limit',
       },
     );
     final data = body['data'] as List<dynamic>? ?? [];
     return data.map((e) => ChatMessage.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<ContactPickerData> fetchStudentContacts({required String token}) async {
+    final body = await _client.getJson('/student/chat/contacts', token: token);
+    return ContactPickerData.fromJson(body['data'] as Map<String, dynamic>? ?? {});
+  }
+
+  Future<ContactPickerData> fetchTeacherContacts({
+    required String token,
+    required String branchId,
+    required String academicYearId,
+  }) async {
+    final body = await _client.getJson(
+      '/teacher/chat/contacts',
+      token: token,
+      query: {'branchId': branchId, 'academicYearId': academicYearId},
+    );
+    return ContactPickerData.fromJson(body['data'] as Map<String, dynamic>? ?? {});
+  }
+
+  Future<ContactPickerData> fetchAdminContacts({
+    required String token,
+    required String branchId,
+    required String academicYearId,
+  }) async {
+    final body = await _client.getJson(
+      '/staff/chat/contacts',
+      token: token,
+      query: {'branchId': branchId, 'academicYearId': academicYearId},
+    );
+    return ContactPickerData.fromJson(body['data'] as Map<String, dynamic>? ?? {});
   }
 }

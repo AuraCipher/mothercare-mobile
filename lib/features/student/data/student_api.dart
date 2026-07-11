@@ -56,4 +56,9 @@ class StudentApi {
     final body = await _client.getJson('/student/results/table', token: token, query: query);
     return ResultsTableData.fromJson(body['data'] as Map<String, dynamic>? ?? {});
   }
+
+  Future<Map<String, dynamic>> fetchProfile({required String token}) async {
+    final body = await _client.getJson('/student/profile', token: token);
+    return body['data'] as Map<String, dynamic>? ?? {};
+  }
 }

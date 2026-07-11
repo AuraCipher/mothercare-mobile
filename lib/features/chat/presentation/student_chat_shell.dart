@@ -16,7 +16,7 @@ import '../widgets/student_bottom_nav.dart';
 import '../../../core/widgets/universal_header.dart';
 import '../../student/presentation/student_academics_tab.dart';
 import 'student_chat_landing_screen.dart';
-import 'student_placeholder_tab.dart';
+import '../../student/presentation/student_profile_tab.dart';
 
 /// Student home — bootstrap, socket, bottom nav, chat landing.
 class StudentChatShell extends StatefulWidget {
@@ -208,11 +208,9 @@ class _StudentChatShellState extends State<StudentChatShell> {
               subtitle: bootstrap.groupLabel,
             ),
             Expanded(
-              child: StudentPlaceholderTab(
+              child: StudentProfileTab(
+                token: widget.session.token,
                 bootstrap: bootstrap,
-                message: 'Your school profile and settings.',
-                icon: Icons.person_outline_rounded,
-                showLogout: true,
                 onLogout: _logout,
               ),
             ),

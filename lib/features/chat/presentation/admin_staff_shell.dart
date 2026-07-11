@@ -14,7 +14,7 @@ import '../../staff/data/staff_api.dart';
 import '../../staff/models/staff_bootstrap.dart';
 import '../data/chat_socket_service.dart';
 import '../widgets/portal_bottom_nav.dart';
-import 'portal_profile_tab.dart';
+import '../../staff/presentation/staff_profile_tab.dart';
 import 'portal_chat_landing_screen.dart';
 
 class AdminStaffShell extends StatefulWidget {
@@ -255,11 +255,9 @@ class _AdminStaffShellState extends State<AdminStaffShell> {
               subtitle: bootstrap.roleLabel,
             ),
             Expanded(
-              child: PortalProfileTab(
-                userName: bootstrap.userName,
-                branchName: bootstrap.branchName,
-                academicYearLabel: bootstrap.academicYearLabel,
-                roleLabel: bootstrap.roleLabel,
+              child: StaffProfileTab(
+                token: widget.session.token,
+                bootstrap: bootstrap,
                 onLogout: _logout,
               ),
             ),

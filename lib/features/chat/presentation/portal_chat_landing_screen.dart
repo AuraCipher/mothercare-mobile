@@ -14,7 +14,9 @@ import '../widgets/room_list_icon.dart';
 import '../../../testing/e2e_keys.dart';
 import 'chat_room_screen.dart';
 import 'class_community_screen.dart';
+import 'chat_contact_picker_screen.dart';
 import 'teacher_system_room_screen.dart';
+import '../widgets/new_message_bar.dart';
 import '../../teacher/models/teacher_bootstrap.dart';
 import '../../teacher/presentation/teacher_chat_nav.dart';
 
@@ -245,6 +247,71 @@ class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
     return section?.contacts ?? [];
   }
 
+  List<ChatRoomSummary> get _dmRooms {
+    if (_landing == null) return [];
+    final section = _landing!.sections.where((s) => s.key == 'dm').firstOrNull;
+    if (section != null && section.rooms.isNotEmpty) return section.rooms;
+    return _landing!.rooms.where((r) => r.kind == 'direct_message').toList();
+  }
+
+  Future<void> _openPickerContact(ContactPickerContact contact) async {
+    ChatRoomSummary room;
+    if (contact.dmRoomId != null && contact.dmRoomId!.isNotEmpty) {
+      room = _landing?.roomById(contact.dmRoomId!) ??
+          ChatRoomSummary(
+            id: contact.dmRoomId!,
+            kind: 'direct_message',
+            name: contact.name,
+            canPost: true,
+            unreadCount: 0,
+          );
+    } else if (widget.kind == PortalChatKind.admin) {
+      room = await _chatApi.openDirectMessage(
+        token: widget.session.token,
+        branchId: widget.branchId!,
+        academicYearId: widget.academicYearId,
+        participantUserId: contact.userId,
+        contactName: contact.name,
+      );
+    } else {
+      room = await _chatApi.openTeacherDirectMessage(
+        token: widget.session.token,
+        branchId: widget.branchId!,
+        academicYearId: widget.academicYearId,
+        participantUserId: contact.userId,
+        contactName: contact.name,
+      );
+    }
+    if (!mounted) return;
+    _openRoom(room);
+  }
+
+  Future<void> _openContactPicker() async {
+    final refreshed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => ChatContactPickerScreen(
+          token: widget.session.token,
+          fetchContacts: () {
+            if (widget.kind == PortalChatKind.admin) {
+              return _chatApi.fetchAdminContacts(
+                token: widget.session.token,
+                branchId: widget.branchId!,
+                academicYearId: widget.academicYearId,
+              );
+            }
+            return _chatApi.fetchTeacherContacts(
+              token: widget.session.token,
+              branchId: widget.branchId!,
+              academicYearId: widget.academicYearId,
+            );
+          },
+          openRoom: _openPickerContact,
+        ),
+      ),
+    );
+    if (refreshed == true) _load();
+  }
+
   List<ChatRoomSummary> get _teacherRecords {
     if (widget.kind != PortalChatKind.teacher || _landing == null) return [];
     final section = _landing!.sections.where((s) => s.key == 'records').firstOrNull;
@@ -266,6 +333,7 @@ class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
         ),
         if (_offline) const OfflineBanner(),
         Expanded(child: _buildBody()),
+        NewMessageBar(onTap: _openContactPicker),
       ],
     );
   }
@@ -297,7 +365,7 @@ class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
     final teachers = _roomByKind('teacher_announcement');
     final teacherRecords = _teacherRecords;
     final communities = _communities;
-    final contacts = _contacts;
+    final dmRooms = _dmRooms;
 
     return RefreshIndicator(
       onRefresh: _load,
@@ -313,6 +381,16 @@ class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
               onTap: () => _openRoom(teachers),
               accent: AppColors.violet.withValues(alpha: 0.04),
             ),
+          if (dmRooms.isNotEmpty) ...[
+            const _SectionHeader(title: 'Messages'),
+            ...dmRooms.map(
+              (room) => ChatRoomTile(
+                room: room,
+                displayName: room.name,
+                onTap: () => _openRoom(room),
+              ),
+            ),
+          ],
           if (teacherRecords.isNotEmpty) ...[
             const _SectionHeader(title: 'My Records'),
             ...teacherRecords.map(
@@ -325,11 +403,7 @@ class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
               (c) => _ClassCommunityRow(community: c, onTap: () => _openClassCommunity(c)),
             ),
           ],
-          if (contacts.isNotEmpty) ...[
-            const _SectionHeader(title: 'Contacts'),
-            ...contacts.map((c) => _ContactRow(contact: c, onTap: () => _openContact(c))),
-          ],
-          if (school == null && teachers == null && communities.isEmpty && contacts.isEmpty)
+          if (school == null && teachers == null && communities.isEmpty && dmRooms.isEmpty && teacherRecords.isEmpty)
             const Padding(
               padding: EdgeInsets.all(48),
               child: Center(child: Text('No chat rooms yet', style: TextStyle(color: AppColors.textMuted))),

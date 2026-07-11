@@ -1,14 +1,14 @@
+import '../../../core/api/authenticated_client.dart';
 import '../../../core/api/portal_api.dart';
-import '../../../core/storage/session_storage.dart';
 import '../models/staff_bootstrap.dart';
 
 class StaffApi {
-  StaffApi({PortalApi? portal, SessionStorage? storage})
-      : _portal = portal ?? PortalApi(),
-        _storage = storage ?? SessionStorage();
+  StaffApi({AuthenticatedClient? client, PortalApi? portal})
+      : _client = client ?? AuthenticatedClient(),
+        _portal = portal ?? PortalApi();
 
+  final AuthenticatedClient _client;
   final PortalApi _portal;
-  final SessionStorage _storage;
 
   Future<StaffBootstrap> fetchBootstrap({
     required String token,
@@ -16,15 +16,30 @@ class StaffApi {
     required String role,
   }) async {
     final branch = await _portal.fetchPrimaryBranch(token: token);
+    final academicYearId = await _portal.resolveAcademicYearId(
+      token: token,
+      branchId: branch.id,
+    );
     final ay = await _portal.fetchAcademicYear(token: token, branchId: branch.id);
-    await _storage.saveAcademicYearId(ay.id);
     return StaffBootstrap(
-      academicYearId: ay.id,
+      academicYearId: academicYearId,
       academicYearLabel: ay.label,
       branchId: branch.id,
       branchName: branch.name,
       userName: userName,
-      role: branch.role ?? role,
+      role: role,
     );
+  }
+
+  Future<Map<String, dynamic>> fetchProfile({
+    required String token,
+    required StaffBootstrap bootstrap,
+  }) async {
+    final body = await _client.getJson(
+      '/staff/profile',
+      token: token,
+      query: {'branchId': bootstrap.branchId},
+    );
+    return body['data'] as Map<String, dynamic>? ?? {};
   }
 }
