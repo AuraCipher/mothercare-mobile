@@ -5,6 +5,8 @@ import '../../chat/presentation/teacher_classes_tab.dart';
 import '../models/teacher_bootstrap.dart';
 import 'teacher_attendance_panel.dart';
 import 'teacher_results_panel.dart';
+import 'teacher_timetable_panel.dart';
+import 'teacher_hod_panel.dart';
 
 class TeacherWorkspaceTab extends StatelessWidget {
   const TeacherWorkspaceTab({
@@ -18,8 +20,23 @@ class TeacherWorkspaceTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tabs = <Widget>[
+      const Tab(text: 'Classes'),
+      const Tab(text: "Today's Attendance"),
+      const Tab(text: 'Results'),
+      const Tab(text: 'Timetable'),
+      if (bootstrap.isHod) const Tab(text: 'HOD'),
+    ];
+    final views = <Widget>[
+      TeacherClassesTab(bootstrap: bootstrap),
+      TeacherAttendancePanel(token: token, bootstrap: bootstrap),
+      TeacherResultsPanel(token: token, bootstrap: bootstrap),
+      TeacherTimetablePanel(token: token, bootstrap: bootstrap),
+      if (bootstrap.isHod) TeacherHodPanel(token: token, bootstrap: bootstrap),
+    ];
+
     return DefaultTabController(
-      length: 3,
+      length: tabs.length,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -30,21 +47,11 @@ class TeacherWorkspaceTab extends StatelessWidget {
               unselectedLabelColor: AppColors.textMuted,
               indicatorColor: AppColors.violet,
               isScrollable: true,
-              tabs: const [
-                Tab(text: 'Classes'),
-                Tab(text: "Today's Attendance"),
-                Tab(text: 'Results'),
-              ],
+              tabs: tabs,
             ),
           ),
           Expanded(
-            child: TabBarView(
-              children: [
-                TeacherClassesTab(bootstrap: bootstrap),
-                TeacherAttendancePanel(token: token, bootstrap: bootstrap),
-                TeacherResultsPanel(token: token, bootstrap: bootstrap),
-              ],
-            ),
+            child: TabBarView(children: views),
           ),
         ],
       ),

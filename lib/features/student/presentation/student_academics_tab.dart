@@ -5,6 +5,9 @@ import '../models/student_bootstrap.dart';
 import 'student_attendance_panel.dart';
 import 'student_fees_panel.dart';
 import 'student_results_panel.dart';
+import 'student_timetable_panel.dart';
+import 'student_datesheets_panel.dart';
+import 'student_canteen_panel.dart';
 
 class StudentAcademicsTab extends StatelessWidget {
   const StudentAcademicsTab({
@@ -19,7 +22,7 @@ class StudentAcademicsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 3,
+      length: 6,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -29,10 +32,14 @@ class StudentAcademicsTab extends StatelessWidget {
               labelColor: AppColors.violet,
               unselectedLabelColor: AppColors.textMuted,
               indicatorColor: AppColors.violet,
+              isScrollable: true,
               tabs: const [
                 Tab(text: 'Fees'),
                 Tab(text: 'Attendance'),
                 Tab(text: 'Results'),
+                Tab(text: 'Timetable'),
+                Tab(text: 'Datesheets'),
+                Tab(text: 'Canteen'),
               ],
             ),
           ),
@@ -42,6 +49,9 @@ class StudentAcademicsTab extends StatelessWidget {
                 StudentFeesPanel(token: token, bootstrap: bootstrap),
                 StudentAttendancePanel(token: token, bootstrap: bootstrap),
                 StudentResultsPanel(token: token, bootstrap: bootstrap),
+                StudentTimetablePanel(token: token, bootstrap: bootstrap),
+                StudentDatesheetsPanel(token: token, bootstrap: bootstrap),
+                StudentCanteenPanel(token: token, bootstrap: bootstrap),
               ],
             ),
           ),

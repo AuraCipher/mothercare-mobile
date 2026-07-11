@@ -15,6 +15,7 @@ import '../../staff/models/staff_bootstrap.dart';
 import '../data/chat_socket_service.dart';
 import '../widgets/portal_bottom_nav.dart';
 import '../../staff/presentation/staff_profile_tab.dart';
+import '../../staff/presentation/staff_campus_tab.dart';
 import 'portal_chat_landing_screen.dart';
 
 class AdminStaffShell extends StatefulWidget {
@@ -221,27 +222,9 @@ class _AdminStaffShellState extends State<AdminStaffShell> {
               subtitle: bootstrap.roleLabel,
             ),
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.all(24),
-                children: [
-                  _CampusCard(
-                    icon: Icons.people_outline_rounded,
-                    title: 'Staff & students',
-                    subtitle: 'Roster, admissions, and staff tools — Phase 2',
-                  ),
-                  const SizedBox(height: 12),
-                  _CampusCard(
-                    icon: Icons.campaign_outlined,
-                    title: 'Announcements',
-                    subtitle: 'School-wide posts from admin — Phase 2',
-                  ),
-                  const SizedBox(height: 12),
-                  _CampusCard(
-                    icon: Icons.payments_outlined,
-                    title: 'Fees & finance',
-                    subtitle: 'Collections and reports — Phase 2',
-                  ),
-                ],
+              child: StaffCampusTab(
+                token: widget.session.token,
+                bootstrap: bootstrap,
               ),
             ),
           ],
@@ -267,50 +250,3 @@ class _AdminStaffShellState extends State<AdminStaffShell> {
   }
 }
 
-class _CampusCard extends StatelessWidget {
-  const _CampusCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: AppColors.violet.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: AppColors.violet),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-                const SizedBox(height: 4),
-                Text(subtitle, style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}

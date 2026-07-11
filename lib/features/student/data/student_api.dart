@@ -61,4 +61,34 @@ class StudentApi {
     final body = await _client.getJson('/student/profile', token: token);
     return body['data'] as Map<String, dynamic>? ?? {};
   }
+
+  Future<Map<String, dynamic>> fetchTimetable({
+    required String token,
+    required String academicYearId,
+  }) async {
+    final body = await _client.getJson('/student/timetable', token: token, query: _scope(academicYearId));
+    return body['data'] as Map<String, dynamic>? ?? {};
+  }
+
+  Future<List<Map<String, dynamic>>> fetchDatesheets({
+    required String token,
+    required String academicYearId,
+  }) async {
+    final body = await _client.getJson('/student/datesheets', token: token, query: _scope(academicYearId));
+    final data = body['data'];
+    if (data is List) {
+      return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    }
+    return [];
+  }
+
+  Future<Map<String, dynamic>?> fetchCanteen({
+    required String token,
+    required String academicYearId,
+  }) async {
+    final body = await _client.getJson('/student/canteen', token: token, query: _scope(academicYearId));
+    final data = body['data'];
+    if (data == null) return null;
+    return Map<String, dynamic>.from(data as Map);
+  }
 }

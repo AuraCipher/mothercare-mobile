@@ -35,7 +35,9 @@ void main() {
       await loginDemoStudent(tester);
 
       await tapNavLabel(tester, 'Academics');
-      expect(find.textContaining('coming in Phase 2'), findsOneWidget);
+      expect(find.text('Fees'), findsOneWidget);
+      expect(find.text('Attendance'), findsOneWidget);
+      expect(find.text('Results'), findsOneWidget);
 
       await tapNavLabel(tester, 'Profile');
       expect(find.text('Logout'), findsOneWidget);

@@ -95,4 +95,20 @@ class TeacherApi {
     final body = await _client.getJson('/teacher/profile', token: token);
     return body['data'] as Map<String, dynamic>? ?? {};
   }
+
+  Future<Map<String, dynamic>> fetchTimetable({
+    required String token,
+    required TeacherBootstrap bootstrap,
+  }) async {
+    final body = await _client.getJson('/teacher/timetable', token: token, query: _scope(bootstrap));
+    return body['data'] as Map<String, dynamic>? ?? {};
+  }
+
+  Future<Map<String, dynamic>> fetchHodDepartment({
+    required String token,
+    required TeacherBootstrap bootstrap,
+  }) async {
+    final body = await _client.getJson('/teacher/hod/department', token: token, query: _scope(bootstrap));
+    return body['data'] as Map<String, dynamic>? ?? {};
+  }
 }

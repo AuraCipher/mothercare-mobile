@@ -42,4 +42,61 @@ class StaffApi {
     );
     return body['data'] as Map<String, dynamic>? ?? {};
   }
+
+  Map<String, String> _scope(StaffBootstrap bootstrap) => {
+        'branchId': bootstrap.branchId,
+        'academicYearId': bootstrap.academicYearId,
+      };
+
+  Future<Map<String, dynamic>> fetchCampusOverview({
+    required String token,
+    required StaffBootstrap bootstrap,
+  }) async {
+    final body = await _client.getJson('/staff/campus/overview', token: token, query: _scope(bootstrap));
+    return body['data'] as Map<String, dynamic>? ?? {};
+  }
+
+  Future<Map<String, dynamic>> fetchCampusFees({
+    required String token,
+    required StaffBootstrap bootstrap,
+  }) async {
+    final body = await _client.getJson('/staff/campus/fees', token: token, query: _scope(bootstrap));
+    return body['data'] as Map<String, dynamic>? ?? {};
+  }
+
+  Future<List<Map<String, dynamic>>> fetchCampusStaff({
+    required String token,
+    required StaffBootstrap bootstrap,
+  }) async {
+    final body = await _client.getJson(
+      '/staff/campus/staff',
+      token: token,
+      query: {'branchId': bootstrap.branchId},
+    );
+    final data = body['data'];
+    if (data is List) {
+      return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    }
+    return [];
+  }
+
+  Future<Map<String, dynamic>> fetchCampusAttendance({
+    required String token,
+    required StaffBootstrap bootstrap,
+  }) async {
+    final body = await _client.getJson('/staff/campus/attendance', token: token, query: _scope(bootstrap));
+    return body['data'] as Map<String, dynamic>? ?? {};
+  }
+
+  Future<List<Map<String, dynamic>>> fetchCampusResults({
+    required String token,
+    required StaffBootstrap bootstrap,
+  }) async {
+    final body = await _client.getJson('/staff/campus/results', token: token, query: _scope(bootstrap));
+    final data = body['data'];
+    if (data is List) {
+      return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    }
+    return [];
+  }
 }
