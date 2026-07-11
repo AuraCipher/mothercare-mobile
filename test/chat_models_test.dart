@@ -227,6 +227,37 @@ void main() {
     expect(cleared.rooms.firstWhere((r) => r.id == 'room-1').unreadCount, 3);
   });
 
+  test('landingVisibleContacts removes self and CEO', () {
+    const contacts = [
+      ChatContactSummary(userId: 'self', name: 'Me', role: 'branch_admin', branchRole: 'branch_admin'),
+      ChatContactSummary(userId: 'ceo', name: 'CEO', role: 'super_admin', branchRole: 'branch_admin'),
+      ChatContactSummary(userId: 'peer', name: 'Ms. Sarah', role: 'teacher', branchRole: 'teacher'),
+    ];
+
+    final visible = landingVisibleContacts(contacts, 'self');
+    expect(visible.map((c) => c.userId), ['peer']);
+  });
+
+  test('landingVisibleDmRooms hides CEO and self threads', () {
+    const rooms = [
+      ChatRoomSummary(id: 'dm-ceo', kind: 'direct_message', name: 'CEO', canPost: true, unreadCount: 0),
+      ChatRoomSummary(id: 'dm-peer', kind: 'direct_message', name: 'Ms. Sarah', canPost: true, unreadCount: 1),
+      ChatRoomSummary(id: 'ann', kind: 'school_announcement', name: 'School', canPost: false, unreadCount: 0),
+    ];
+    const contacts = [
+      ChatContactSummary(
+        userId: 'ceo',
+        name: 'CEO',
+        role: 'super_admin',
+        branchRole: 'branch_admin',
+        dmRoomId: 'dm-ceo',
+      ),
+    ];
+
+    final visible = landingVisibleDmRooms(rooms: rooms, currentUserId: 'admin-1', contacts: contacts);
+    expect(visible.map((r) => r.id), ['dm-peer', 'ann']);
+  });
+
   test('ContactPickerData filteredForUser removes self', () {
     final data = ContactPickerData.fromJson({
       'sections': [

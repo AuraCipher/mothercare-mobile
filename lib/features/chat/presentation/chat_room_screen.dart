@@ -29,6 +29,7 @@ import '../data/chat_media_download.dart';
 import '../utils/chat_media_url.dart';
 import '../widgets/chat_image_viewer_screen.dart';
 import '../widgets/chat_message_actions_sheet.dart';
+import '../widgets/chat_composer_bar.dart';
 import '../widgets/pending_message_bubble.dart';
 import '../widgets/voice_note_recorder.dart';
 
