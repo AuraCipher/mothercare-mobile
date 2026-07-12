@@ -43,3 +43,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Production dart-defines (may contain Firebase keys)
+dart_defines/production.json
