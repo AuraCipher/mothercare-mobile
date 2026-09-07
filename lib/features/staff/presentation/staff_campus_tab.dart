@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/api/api_exception.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../portal/widgets/portal_panel_scaffold.dart';
 import '../data/staff_api.dart';
@@ -68,10 +71,16 @@ class _StaffCampusTabState extends State<StaffCampusTab> with SingleTickerProvid
         _results = results[4] as List<Map<String, dynamic>>;
         _loading = false;
       });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.message;
+        _loading = false;
+      });
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _error = 'Could not load campus data';
+        _error = 'Could not load campus data. Please try again.';
         _loading = false;
       });
     }

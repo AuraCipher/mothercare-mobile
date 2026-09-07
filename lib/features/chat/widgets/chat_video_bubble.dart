@@ -23,6 +23,7 @@ class ChatVideoBubble extends StatefulWidget {
 class _ChatVideoBubbleState extends State<ChatVideoBubble> {
   VideoPlayerController? _thumbController;
   bool _initialized = false;
+  bool _failed = false;
 
   @override
   void initState() {
@@ -47,6 +48,7 @@ class _ChatVideoBubbleState extends State<ChatVideoBubble> {
       });
     } catch (_) {
       controller.dispose();
+      if (mounted) setState(() => _failed = true);
     }
   }
 
@@ -92,6 +94,10 @@ class _ChatVideoBubbleState extends State<ChatVideoBubble> {
                     ),
                   ),
                 )
+              else if (_failed)
+                const Center(
+                  child: Icon(Icons.broken_image_outlined, color: Colors.white54, size: 32),
+                )
               else
                 const Center(
                   child: SizedBox(
@@ -130,6 +136,7 @@ class _FullscreenVideoPlayer extends StatefulWidget {
 class _FullscreenVideoPlayerState extends State<_FullscreenVideoPlayer> {
   late VideoPlayerController _controller;
   bool _ready = false;
+  bool _failed = false;
 
   @override
   void initState() {
@@ -137,11 +144,14 @@ class _FullscreenVideoPlayerState extends State<_FullscreenVideoPlayer> {
     _controller = VideoPlayerController.networkUrl(
       Uri.parse(widget.url),
       httpHeaders: {'Authorization': 'Bearer ${widget.authToken}'},
-    )..initialize().then((_) {
-        if (!mounted) return;
-        setState(() => _ready = true);
-        _controller.play();
-      });
+    );
+    _controller.initialize().then((_) {
+      if (!mounted) return;
+      setState(() => _ready = true);
+      _controller.play();
+    }).catchError((_) {
+      if (mounted) setState(() => _failed = true);
+    });
   }
 
   @override
@@ -160,12 +170,46 @@ class _FullscreenVideoPlayerState extends State<_FullscreenVideoPlayer> {
         elevation: 0,
       ),
       body: Center(
-        child: _ready
-            ? AspectRatio(
-                aspectRatio: _controller.value.aspectRatio,
-                child: VideoPlayer(_controller),
+        child: _failed
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.error_outline, color: Colors.grey.shade500, size: 48),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Could not load video',
+                    style: TextStyle(color: Colors.grey.shade400),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: () {
+                      setState(() {
+                        _failed = false;
+                        _ready = false;
+                      });
+                      _controller.dispose();
+                      _controller = VideoPlayerController.networkUrl(
+                        Uri.parse(widget.url),
+                        httpHeaders: {'Authorization': 'Bearer ${widget.authToken}'},
+                      );
+                      _controller.initialize().then((_) {
+                        if (!mounted) return;
+                        setState(() => _ready = true);
+                        _controller.play();
+                      }).catchError((_) {
+                        if (mounted) setState(() => _failed = true);
+                      });
+                    },
+                    child: const Text('Retry'),
+                  ),
+                ],
               )
-            : const CircularProgressIndicator(color: AppColors.violet),
+            : _ready
+                ? AspectRatio(
+                    aspectRatio: _controller.value.aspectRatio,
+                    child: VideoPlayer(_controller),
+                  )
+                : const CircularProgressIndicator(color: AppColors.violet),
       ),
       floatingActionButton: _ready
           ? FloatingActionButton(

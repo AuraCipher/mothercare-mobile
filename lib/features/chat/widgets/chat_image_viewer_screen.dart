@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -39,7 +40,7 @@ class _ChatImageViewerScreenState extends State<ChatImageViewerScreen> {
           'Authorization': 'Bearer ${widget.authToken}',
           'Accept': 'image/*',
         },
-      );
+      ).timeout(const Duration(seconds: 15));
       if (!mounted) return;
       if (res.statusCode >= 200 && res.statusCode < 300 && res.bodyBytes.isNotEmpty) {
         setState(() {
@@ -83,6 +84,17 @@ class _ChatImageViewerScreenState extends State<ChatImageViewerScreen> {
                       Text(
                         'Could not load image',
                         style: TextStyle(color: Colors.grey.shade400),
+                      ),
+                      const SizedBox(height: 8),
+                      TextButton(
+                        onPressed: () {
+                          setState(() {
+                            _loading = true;
+                            _failed = false;
+                          });
+                          _load();
+                        },
+                        child: const Text('Retry'),
                       ),
                     ],
                   )

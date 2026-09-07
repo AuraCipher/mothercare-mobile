@@ -57,6 +57,20 @@ class LoginValidator {
     if (lower.contains('web portal only')) {
       return 'This account uses the web admin portal only.';
     }
-    return message;
+    if (lower.contains('cannot reach') || lower.contains('failed to fetch') || lower.contains('network')) {
+      return 'Cannot reach the server. Please check your internet connection.';
+    }
+    if (lower.contains('timed out') || lower.contains('timeout')) {
+      return 'The server took too long to respond. Please try again.';
+    }
+    // Developer-facing messages should never reach end users
+    if (lower.contains('set host=') || lower.contains('dart-define') || lower.contains('npm run dev')) {
+      return 'Cannot reach the server. Please check your internet connection and try again.';
+    }
+    // Fallback: only pass through if short and safe
+    if (message.length < 80 && !message.contains('prisma') && !message.contains('P20') && !message.contains('http://') && !message.contains('localhost')) {
+      return message;
+    }
+    return 'Something went wrong. Please try again.';
   }
 }

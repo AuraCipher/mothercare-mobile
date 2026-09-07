@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../../../core/api/api_exception.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../portal/widgets/portal_panel_scaffold.dart';
 import '../data/student_api.dart';
@@ -46,10 +49,16 @@ class _StudentDatesheetsPanelState extends State<StudentDatesheetsPanel> {
         _sheets = sheets;
         _loading = false;
       });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.message;
+        _loading = false;
+      });
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _error = 'Could not load datesheets';
+        _error = 'Could not load datesheets. Please try again.';
         _loading = false;
       });
     }

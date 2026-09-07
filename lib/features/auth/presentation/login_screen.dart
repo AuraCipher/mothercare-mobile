@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../../../testing/e2e_keys.dart';
@@ -117,12 +120,13 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } on AuthApiException catch (e) {
       setState(() => _apiError = LoginValidator.mapApiError(e.message));
+    } on SocketException {
+      setState(() => _apiError = 'Cannot reach the server. Please check your internet connection and try again.');
+    } on TimeoutException {
+      setState(() => _apiError = 'The server took too long to respond. Please try again.');
     } catch (e) {
       setState(() {
-        _apiError = e.toString().contains('SocketException') ||
-                e.toString().contains('Failed host lookup')
-            ? 'Cannot reach server. Check API URL and that backend is running.'
-            : 'Something went wrong. Please try again.';
+        _apiError = 'Something went wrong. Please try again.';
       });
     } finally {
       if (mounted) setState(() => _loading = false);

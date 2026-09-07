@@ -46,17 +46,15 @@ class AuthApi {
           .timeout(const Duration(seconds: 20));
     } on SocketException {
       throw AuthApiException(
-        'Cannot reach server at $_baseUrl. '
-        'Set HOST=0.0.0.0 in backend/.env, restart the API, and use your PC LAN IP in --dart-define=API_BASE_URL.',
+        'Cannot reach the server. Please check your internet connection and try again.',
       );
     } on TimeoutException {
       throw AuthApiException(
-        'Server timed out at $_baseUrl. Check Wi‑Fi, firewall (port 5000), and that the API is running.',
+        'The server took too long to respond. Please check your connection and try again.',
       );
     } on http.ClientException {
       throw AuthApiException(
-        'Cannot reach server at $_baseUrl. '
-        'Set HOST=0.0.0.0 in backend/.env and restart npm run dev.',
+        'Cannot reach the server. Please check your internet connection and try again.',
       );
     }
 

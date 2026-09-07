@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -51,8 +52,14 @@ class _ChatDocumentBubbleState extends State<ChatDocumentBubble> {
           'Authorization': 'Bearer ${widget.authToken}',
           'Accept': '*/*',
         },
-      );
-      if (res.statusCode < 200 || res.statusCode >= 300) return;
+      ).timeout(const Duration(seconds: 30));
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not download document')),
+        );
+        return;
+      }
       final dir = await getTemporaryDirectory();
       final safeName = widget.fileName.replaceAll(RegExp(r'[^\w.\-]+'), '_');
       final file = File(p.join(dir.path, safeName));

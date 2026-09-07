@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/api/api_exception.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../portal/widgets/portal_panel_scaffold.dart';
 import '../data/teacher_api.dart';
@@ -44,10 +47,16 @@ class _TeacherMyPayrollPanelState extends State<TeacherMyPayrollPanel> {
         _rows = rows;
         _loading = false;
       });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.message;
+        _loading = false;
+      });
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _error = 'Could not load payroll history';
+        _error = 'Could not load payroll history. Please try again.';
         _loading = false;
       });
     }
