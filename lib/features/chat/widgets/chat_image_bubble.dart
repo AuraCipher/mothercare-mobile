@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -54,7 +55,7 @@ class _ChatImageBubbleState extends State<ChatImageBubble> {
           'Authorization': 'Bearer ${widget.authToken}',
           'Accept': 'image/*',
         },
-      );
+      ).timeout(const Duration(seconds: 15));
       if (!mounted) return;
       if (res.statusCode >= 200 && res.statusCode < 300 && res.bodyBytes.isNotEmpty) {
         setState(() {

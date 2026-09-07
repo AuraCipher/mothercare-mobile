@@ -296,7 +296,12 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       await _persistMessages();
     } catch (_) {
       if (!mounted) return;
-      setState(() => _loadingMore = false);
+      setState(() {
+        _loadingMore = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not load older messages')),
+      );
     }
   }
 

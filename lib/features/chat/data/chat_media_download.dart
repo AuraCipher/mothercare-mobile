@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
@@ -25,7 +26,7 @@ Future<ChatMediaDownloadResult> downloadChatMedia({
       'Authorization': 'Bearer $authToken',
       'Accept': '*/*',
     },
-  );
+  ).timeout(const Duration(seconds: 30));
   if (res.statusCode < 200 || res.statusCode >= 300 || res.bodyBytes.isEmpty) {
     throw Exception('Download failed (${res.statusCode})');
   }

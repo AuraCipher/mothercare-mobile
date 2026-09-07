@@ -59,7 +59,10 @@ class _StudentSystemRoomScreenState extends State<StudentSystemRoomScreen> {
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _loadingMessages = false);
+      setState(() {
+        _messages = [];
+        _loadingMessages = false;
+      });
     }
   }
 

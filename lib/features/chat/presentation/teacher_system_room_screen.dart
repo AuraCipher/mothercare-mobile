@@ -58,7 +58,10 @@ class _TeacherSystemRoomScreenState extends State<TeacherSystemRoomScreen> {
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _loadingMessages = false);
+      setState(() {
+        _messages = [];
+        _loadingMessages = false;
+      });
     }
   }
 

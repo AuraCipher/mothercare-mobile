@@ -25,6 +25,7 @@ class _StudentProfileTabState extends State<StudentProfileTab> {
   final _api = StudentApi();
   Map<String, dynamic>? _profile;
   bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
@@ -33,7 +34,7 @@ class _StudentProfileTabState extends State<StudentProfileTab> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    setState(() { _loading = true; _error = null; });
     try {
       final profile = await _api.fetchProfile(token: widget.token);
       if (!mounted) return;
@@ -43,7 +44,10 @@ class _StudentProfileTabState extends State<StudentProfileTab> {
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _loading = false);
+      setState(() {
+        _error = 'Could not load profile. Please try again.';
+        _loading = false;
+      });
     }
   }
 
@@ -51,6 +55,24 @@ class _StudentProfileTabState extends State<StudentProfileTab> {
   Widget build(BuildContext context) {
     if (_loading) {
       return const Center(child: CircularProgressIndicator(color: AppColors.violet));
+    }
+
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.error_outline, color: Colors.grey.shade500, size: 40),
+              const SizedBox(height: 12),
+              Text(_error!, style: TextStyle(color: Colors.grey.shade400), textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              TextButton(onPressed: _load, child: const Text('Retry')),
+            ],
+          ),
+        ),
+      );
     }
 
     final p = _profile;
