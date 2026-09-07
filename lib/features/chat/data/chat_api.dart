@@ -147,7 +147,7 @@ class ChatApi {
       '/chat/rooms/$roomId/messages',
       token: token,
       query: {
-        if (cursor != null) 'cursor': cursor,
+        'cursor': ?cursor,
         'limit': '$limit',
       },
     );

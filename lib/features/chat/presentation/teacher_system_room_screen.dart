@@ -146,7 +146,7 @@ class _TeacherSystemRoomScreenState extends State<TeacherSystemRoomScreen> {
       child: ListView.separated(
         padding: const EdgeInsets.all(16),
         itemCount: _messages.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 12),
+        separatorBuilder: (_, _) => const SizedBox(height: 12),
         itemBuilder: (context, index) {
           final msg = _messages[index];
           return Container(

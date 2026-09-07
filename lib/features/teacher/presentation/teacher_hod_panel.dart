@@ -75,7 +75,7 @@ class _TeacherHodPanelState extends State<TeacherHodPanel> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.all(16),
                 itemCount: subjects.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                separatorBuilder: (_, _) => const SizedBox(height: 8),
                 itemBuilder: (context, index) {
                   final subject = subjects[index];
                   return Container(

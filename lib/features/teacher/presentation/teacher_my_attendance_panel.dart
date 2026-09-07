@@ -84,7 +84,7 @@ class _TeacherMyAttendancePanelState extends State<TeacherMyAttendancePanel> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.all(16),
                 itemCount: _rows.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                separatorBuilder: (_, _) => const SizedBox(height: 8),
                 itemBuilder: (context, index) {
                   final row = _rows[index];
                   final date = DateTime.tryParse(row['date']?.toString() ?? '');

@@ -80,7 +80,7 @@ class _StudentTimetablePanelState extends State<StudentTimetablePanel> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.all(16),
                 itemCount: slots.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                separatorBuilder: (_, _) => const SizedBox(height: 8),
                 itemBuilder: (context, index) {
                   final slot = slots[index];
                   final day = slot['dayOfWeek'] as int?;
@@ -102,7 +102,7 @@ class _StudentTimetablePanelState extends State<StudentTimetablePanel> {
                           [
                             if (day != null && day >= 1 && day <= 7) _dayNames[day - 1],
                             '${slot['startTime']} – ${slot['endTime']}',
-                            if (teacher != null) teacher,
+                            ?teacher,
                           ].whereType<String>().join(' · '),
                           style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
                         ),
