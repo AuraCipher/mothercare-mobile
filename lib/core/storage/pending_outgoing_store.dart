@@ -14,6 +14,8 @@ class PendingOutgoingStore {
 
   static final PendingOutgoingStore instance = PendingOutgoingStore._();
 
+  static bool testMode = false;
+
   Directory? _baseDir;
 
   Future<Directory> _pendingMediaDir(String userId) async {
@@ -46,6 +48,7 @@ class PendingOutgoingStore {
     required String userId,
     required String roomId,
   }) async {
+    if (testMode) return [];
     try {
       final db = await AppDatabase.instance.database;
       final rows = await db.query(
@@ -76,6 +79,7 @@ class PendingOutgoingStore {
     required String roomId,
     required List<PendingOutgoingMessage> pending,
   }) async {
+    if (testMode) return;
     try {
       final keep = pending.where((p) => p.phase != PendingSendPhase.sending).toList();
       final db = await AppDatabase.instance.database;
@@ -105,6 +109,7 @@ class PendingOutgoingStore {
   }
 
   Future<void> clearUser(String userId) async {
+    if (testMode) return;
     await ChatMessageCacheStore.instance.clearUser(userId);
   }
 }

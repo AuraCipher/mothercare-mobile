@@ -90,6 +90,70 @@ class MockApiRouter {
       final roomId = path.split('/')[3];
       return _ok(_roomMessages(roomId));
     }
+    if (method == 'GET' && path == '/student/profile') {
+      return _ok({
+        'success': true,
+        'data': {
+          'name': 'Ahmed Khan',
+          'rollNumber': 'PG-01',
+          'email': 'ahmed@demo.com',
+          'username': 'demo_pg_ahmed',
+        },
+      });
+    }
+    if (method == 'GET' && path == '/staff/campus/overview') {
+      return _ok({
+        'success': true,
+        'data': {
+          'studentCount': 120,
+          'classCount': 5,
+          'teacherCount': 12,
+          'staffCount': 8,
+        },
+      });
+    }
+    if (method == 'GET' && path == '/staff/campus/fees') {
+      return _ok({
+        'success': true,
+        'data': {
+          'month': 7,
+          'year': 2026,
+          'totalCollected': 500000,
+          'totalDue': 150000,
+          'pendingCount': 30,
+          'collectionRate': 77,
+        },
+      });
+    }
+    if (method == 'GET' && path == '/staff/campus/attendance') {
+      return _ok({
+        'success': true,
+        'data': {
+          'date': '2026-07-10',
+          'summary': {'present': 100, 'absent': 15, 'late': 5},
+          'classes': [
+            {'groupName': 'Playgroup', 'present': 25, 'total': 30},
+          ],
+        },
+      });
+    }
+    if (method == 'GET' && path == '/staff/campus/staff') {
+      return _ok({
+        'success': true,
+        'data': [
+          {'name': 'Ms. Nadia', 'branchRole': 'Teacher', 'userRole': 'teacher', 'status': 'active'},
+          {'name': 'Mr. Khan', 'branchRole': 'Admin', 'userRole': 'branch_admin', 'status': 'active'},
+        ],
+      });
+    }
+    if (method == 'GET' && path == '/staff/campus/results') {
+      return _ok({
+        'success': true,
+        'data': [
+          {'name': 'Mid-term', 'examCount': 5, 'startDate': '2026-06-15'},
+        ],
+      });
+    }
 
     return (
       status: 404,

@@ -67,7 +67,7 @@ void main() {
       await loginDemoAdmin(tester);
 
       await tapNavLabel(tester, 'Campus');
-      expect(find.text('Staff & students'), findsOneWidget);
+      expect(find.text('Overview'), findsOneWidget);
     });
   });
 }

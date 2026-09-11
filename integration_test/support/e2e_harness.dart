@@ -3,6 +3,9 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/main.dart';
 import 'package:mobile/testing/e2e_keys.dart';
+import 'package:mobile/core/storage/sqlite_kv_cache.dart';
+import 'package:mobile/core/storage/chat_message_cache_store.dart';
+import 'package:mobile/core/storage/pending_outgoing_store.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
@@ -27,6 +30,9 @@ Future<void> initE2eBinding() async {
   TestWidgetsFlutterBinding.ensureInitialized();
   FlutterSecureStorage.setMockInitialValues({});
   PathProviderPlatform.instance = _TestPathProvider();
+  SqliteKvCache.testMode = true;
+  ChatMessageCacheStore.testMode = true;
+  PendingOutgoingStore.testMode = true;
 }
 
 Future<void> pumpMcsApp(WidgetTester tester) async {

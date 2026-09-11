@@ -30,6 +30,8 @@ class ChatMessageCacheStore {
 
   static final ChatMessageCacheStore instance = ChatMessageCacheStore._();
 
+  static bool testMode = false;
+
   static const _maxMessagesPerRoom = 200;
   Directory? _baseDir;
 
@@ -47,6 +49,7 @@ class ChatMessageCacheStore {
     required String userId,
     required String roomId,
   }) async {
+    if (testMode) return null;
     try {
       final db = await AppDatabase.instance.database;
       final metaRows = await db.query(
@@ -91,6 +94,7 @@ class ChatMessageCacheStore {
     String? cursor,
     bool hasMore = true,
   }) async {
+    if (testMode) return;
     try {
       final trimmed = messages.length > _maxMessagesPerRoom
           ? messages.sublist(messages.length - _maxMessagesPerRoom)
@@ -135,6 +139,7 @@ class ChatMessageCacheStore {
   }
 
   Future<void> clearUser(String userId) async {
+    if (testMode) return;
     await _deleteUserFiles(userId);
     await AppDatabase.instance.clearUser(userId);
   }

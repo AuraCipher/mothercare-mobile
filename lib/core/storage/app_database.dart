@@ -7,9 +7,12 @@ class AppDatabase {
 
   static final AppDatabase instance = AppDatabase._();
 
+  static Database? testOverride;
+
   Database? _db;
 
   Future<Database> get database async {
+    if (testOverride != null) return testOverride!;
     if (_db != null) return _db!;
     _db = await _open();
     return _db!;

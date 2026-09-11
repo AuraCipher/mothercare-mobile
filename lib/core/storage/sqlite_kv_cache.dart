@@ -11,12 +11,15 @@ class SqliteKvCache {
 
   static final SqliteKvCache instance = SqliteKvCache._();
 
+  static bool testMode = false;
+
   Future<void> put({
     required String key,
     required String category,
     required String userId,
     required Map<String, dynamic> data,
   }) async {
+    if (testMode) return;
     final db = await AppDatabase.instance.database;
     await db.insert(
       'kv_cache',
@@ -32,6 +35,7 @@ class SqliteKvCache {
   }
 
   Future<CachedEnvelope?> get(String key) async {
+    if (testMode) return null;
     final db = await AppDatabase.instance.database;
     final rows = await db.query(
       'kv_cache',
@@ -44,6 +48,7 @@ class SqliteKvCache {
   }
 
   Future<void> delete(String key) async {
+    if (testMode) return;
     final db = await AppDatabase.instance.database;
     await db.delete('kv_cache', where: 'cache_key = ?', whereArgs: [key]);
   }
