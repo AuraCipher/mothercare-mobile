@@ -5,6 +5,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_logo.dart';
 import '../../../core/storage/session_storage.dart';
 import '../../auth/presentation/login_screen.dart';
+import '../../chat/data/chat_upload_pool.dart';
 
 class RoleHomeScreen extends StatelessWidget {
   const RoleHomeScreen({
@@ -17,6 +18,9 @@ class RoleHomeScreen extends StatelessWidget {
   final bool unsupported;
 
   Future<void> _logout(BuildContext context) async {
+    // M4: drop per-user upload schedulers so no queue leaks across users
+    // (M3 task rows are user-scoped and wiped by clearUser).
+    await ChatUploadPool.releaseAll();
     await SessionStorage().clear();
     if (!context.mounted) return;
     Navigator.of(context).pushAndRemoveUntil(

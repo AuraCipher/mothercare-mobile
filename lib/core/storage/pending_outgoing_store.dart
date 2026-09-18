@@ -108,6 +108,20 @@ class PendingOutgoingStore {
     } catch (_) {}
   }
 
+  /// M4 migration helper: drops legacy single-shot pending rows for a room.
+  /// The M3 task store is authoritative for pending work now.
+  Future<void> deleteRoom({required String userId, required String roomId}) async {
+    if (testMode) return;
+    try {
+      final db = await AppDatabase.instance.database;
+      await db.delete(
+        'pending_outgoing',
+        where: 'user_id = ? AND room_id = ?',
+        whereArgs: [userId, roomId],
+      );
+    } catch (_) {}
+  }
+
   Future<void> clearUser(String userId) async {
     if (testMode) return;
     await ChatMessageCacheStore.instance.clearUser(userId);

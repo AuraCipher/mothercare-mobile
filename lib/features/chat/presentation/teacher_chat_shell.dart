@@ -4,6 +4,7 @@ import '../../../core/push/chat_push_nav.dart';
 import '../../../core/push/chat_push_service.dart';
 import '../../../core/storage/chat_message_cache_store.dart';
 import '../../../core/storage/pending_outgoing_store.dart';
+import '../data/chat_upload_pool.dart';
 import '../../../config/app_config.dart';
 import '../../../core/api/api_exception.dart';
 import '../../../core/storage/session_storage.dart';
@@ -119,6 +120,7 @@ class _TeacherChatShellState extends State<TeacherChatShell> {
     await ChatPushService.instance.unbindSession();
     await ChatMessageCacheStore.instance.clearUser(widget.session.payload.id);
     await PendingOutgoingStore.instance.clearUser(widget.session.payload.id);
+    await ChatUploadPool.releaseAll();
     await _sessionStorage.clear();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(

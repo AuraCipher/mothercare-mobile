@@ -390,6 +390,7 @@ class ChatMessage {
     required this.createdAt,
     this.isDeleted = false,
     this.mediaFile,
+    this.attachments = const [],
   });
 
   final String id;
@@ -402,8 +403,22 @@ class ChatMessage {
   final bool isDeleted;
   final ChatMessageMedia? mediaFile;
 
-  bool get isImageMessage => type == 'image' || mediaFile?.isImage == true;
-  bool get isDocumentMessage => type == 'document' || mediaFile?.isDocument == true;
+  /// M4: ordered attachments. Empty for legacy single-attachment messages —
+  /// renderers must fall back to [mediaFile] (see [displayAttachments]).
+  final List<ChatMessageMedia> attachments;
+
+  /// New clients render this; legacy messages expose [mediaFile] only.
+  List<ChatMessageMedia> get displayAttachments =>
+      attachments.isNotEmpty ? attachments : (mediaFile != null ? [mediaFile!] : const []);
+
+  bool get hasAttachments => displayAttachments.isNotEmpty;
+
+  bool get isImageMessage =>
+      type == 'image' || mediaFile?.isImage == true || attachments.any((a) => a.isImage);
+  bool get isDocumentMessage =>
+      type == 'document' ||
+      mediaFile?.isDocument == true ||
+      attachments.any((a) => a.isDocument);
   bool get hasCaption => content != null && content!.trim().isNotEmpty;
 
   String get documentFileName {
@@ -443,6 +458,7 @@ class ChatMessage {
       createdAt: DateTime.tryParse(created) ?? DateTime.now(),
       isDeleted: json['isDeleted'] as bool? ?? false,
       mediaFile: mediaRaw != null ? ChatMessageMedia.fromJson(mediaRaw) : null,
+      attachments: _attachmentsFromJson(json['attachments']),
     );
   }
 
@@ -458,7 +474,17 @@ class ChatMessage {
       sender: ChatMessageSender.fromJson(json['sender'] as Map<String, dynamic>? ?? {}),
       createdAt: DateTime.tryParse(created) ?? DateTime.now(),
       mediaFile: mediaRaw != null ? ChatMessageMedia.fromJson(mediaRaw) : null,
+      attachments: _attachmentsFromJson(json['attachments']),
     );
+  }
+
+  static List<ChatMessageMedia> _attachmentsFromJson(dynamic raw) {
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map<String, dynamic>>()
+        .map(ChatMessageMedia.fromJson)
+        .where((m) => m.hasContent)
+        .toList();
   }
 
   Map<String, dynamic> toJson() => {
@@ -471,6 +497,8 @@ class ChatMessage {
         'createdAt': createdAt.toUtc().toIso8601String(),
         'isDeleted': isDeleted,
         if (mediaFile != null) 'mediaFile': mediaFile!.toJson(),
+        if (attachments.isNotEmpty)
+          'attachments': attachments.map((a) => a.toJson()).toList(),
       };
 
   ChatMessage copyWith({
@@ -487,6 +515,7 @@ class ChatMessage {
       createdAt: createdAt,
       isDeleted: isDeleted ?? this.isDeleted,
       mediaFile: mediaFile,
+      attachments: attachments,
     );
   }
 }

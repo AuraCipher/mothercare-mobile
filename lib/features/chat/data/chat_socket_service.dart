@@ -78,13 +78,86 @@ class ChatSocketService {
     String? content,
     String type = 'text',
     String? mediaFileId,
+    List<String>? mediaFileIds,
+    String? clientMessageId,
   }) {
     _socket?.emit('chat:message:send', {
       'roomId': roomId,
       'type': type,
       if (content != null && content.isNotEmpty) 'content': content,
       'mediaFileId': ?mediaFileId,
+      'mediaFileIds': ?mediaFileIds,
+      'clientMessageId': ?clientMessageId,
     });
+  }
+  /// Testable payload builder (single place both send paths draw from).
+  static Map<String, dynamic> buildSendPayload({
+    required String roomId,
+    String? content,
+    String type = 'text',
+    String? title,
+    String? mediaFileId,
+    List<String>? mediaFileIds,
+    String? clientMessageId,
+  }) {
+    return {
+      'roomId': roomId,
+      'type': type,
+      if (content != null && content.isNotEmpty) 'content': content,
+      if (title != null && title.isNotEmpty) 'title': title,
+      'mediaFileId': ?mediaFileId,
+      'mediaFileIds': ?mediaFileIds,
+      'clientMessageId': ?clientMessageId,
+    };
+  }
+
+  /// M4: acknowledged send. Resolves with the server envelope on `{ok:true}`
+  /// (including `duplicate:true` replays) or throws [ChatSendException] on
+  /// `{ok:false}` / timeout. Old fire-and-forget [sendMessage] is preserved
+  /// for callers that correlate via broadcast echo instead.
+  Future<Map<String, dynamic>> sendMessageWithAck({
+    required String roomId,
+    String? content,
+    String type = 'text',
+    String? mediaFileId,
+    List<String>? mediaFileIds,
+    String? title,
+    String? clientMessageId,
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
+    final socket = _socket;
+    if (socket == null || !socket.connected) {
+      throw ChatSendException('Not connected. Check your network.');
+    }
+    final payload = buildSendPayload(
+      roomId: roomId,
+      content: content,
+      type: type,
+      title: title,
+      mediaFileId: mediaFileId,
+      mediaFileIds: mediaFileIds,
+      clientMessageId: clientMessageId,
+    );
+    try {
+      // emitWithAckAsync resolves with the server's ack payload
+      // ({ok, message?, duplicate?, error?}); see chat.socket.ts.
+      final res = await socket.emitWithAckAsync('chat:message:send', [payload]).timeout(timeout);
+      final map = res is Map ? Map<String, dynamic>.from(res) : <String, dynamic>{};
+      if (map['ok'] == true) {
+        final message = map['message'];
+        return {
+          'message': message is Map ? Map<String, dynamic>.from(message) : <String, dynamic>{},
+          'duplicate': map['duplicate'] == true,
+        };
+      }
+      throw ChatSendException((map['error'] ?? 'Send failed').toString());
+    } on TimeoutException {
+      // Uncertain outcome (server may have committed): the caller MUST NOT
+      // retry blindly — it re-sends with the SAME clientMessageId, and the
+      // server dedupes. Mark the failure so the UI offers explicit retry.
+      throw ChatSendException('Send timed out. The message may already exist — retry to reconcile.',
+          uncertain: true);
+    }
   }
 
   void markRead({required String roomId, String? messageId}) {
@@ -106,4 +179,16 @@ class ChatSocketService {
     _updatedController.close();
     _errorController.close();
   }
+}
+
+/// Send failure. [uncertain] means the server may already have created the
+/// message (timeout after emit) — retry ONLY with the same clientMessageId.
+class ChatSendException implements Exception {
+  ChatSendException(this.message, {this.uncertain = false});
+
+  final String message;
+  final bool uncertain;
+
+  @override
+  String toString() => message;
 }

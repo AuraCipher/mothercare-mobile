@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/core/storage/app_database.dart';
@@ -14,17 +15,27 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// Shared harness for M3 upload tests: in-memory SQLite, temp files,
 /// and a scripted in-memory M1/M2 server.
-class TestDb {
-  static bool _ffiReady = false;
+/// Process-wide entropy holder (isolate-local statics would repeat).
+class _RandomHolder {
+  static final random = math.Random();
+}
+
+class TestDb {  static bool _ffiReady = false;
+  static int _nextId = 0;
 
   static Future<UploadTaskStore> openStore() async {
     if (!_ffiReady) {
       sqfliteFfiInit();
       _ffiReady = true;
     }
+    // Unique per open AND per isolate/process: parallel test files share the
+    // sqflite file backend, and a per-isolate counter alone would collide
+    // (each isolate restarts it at zero) causing lock contention.
+    final entropy = _RandomHolder.random.nextInt(1 << 32).toRadixString(16);
+    final name =
+        '${inMemoryDatabasePath}_${pid}_${_nextId++}_$entropy';
     final db = await databaseFactoryFfi.openDatabase(
-      inMemoryDatabasePath,
-      options: OpenDatabaseOptions(
+      name,      options: OpenDatabaseOptions(
         version: AppDatabase.schemaVersion,
         onCreate: (db, version) => AppDatabase.createSchema(db),
         onUpgrade: (db, oldVersion, _) => AppDatabase.upgradeSchema(db, oldVersion),
@@ -33,7 +44,12 @@ class TestDb {
     AppDatabase.testOverride = db;
     addTearDown(() async {
       AppDatabase.testOverride = null;
-      await db.close();
+      try {
+        await db.close();
+      } catch (_) {}
+      try {
+        await databaseFactoryFfi.deleteDatabase(name);
+      } catch (_) {}
     });
     return UploadTaskStore();
   }

@@ -6,21 +6,22 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
-import 'package:path/path.dart' as p;
 import 'package:video_player/video_player.dart';
 
 import '../../../core/api/api_exception.dart';
 import '../../../core/storage/session_storage.dart';
 import '../../../core/theme/app_theme.dart';
 import '../data/chat_api.dart';
+import '../data/chat_attachment_queue.dart';
+import '../data/chat_file_api.dart';
 import '../data/chat_socket_service.dart';
-import '../data/upload_api.dart';
+import '../data/chat_upload_pool.dart';
 import '../../../core/storage/chat_message_cache_store.dart';
 import '../../../core/storage/pending_outgoing_store.dart';
 import '../../../core/widgets/offline_banner.dart';
 import '../../../core/widgets/universal_header.dart';
 import '../models/chat_models.dart';
-import '../models/pending_outgoing_message.dart';
+import '../widgets/chat_attachment_tray.dart';
 import '../widgets/chat_document_bubble.dart';
 import '../widgets/chat_image_bubble.dart';
 import '../widgets/chat_video_bubble.dart';
@@ -30,7 +31,6 @@ import '../utils/chat_media_url.dart';
 import '../widgets/chat_image_viewer_screen.dart';
 import '../widgets/chat_message_actions_sheet.dart';
 import '../widgets/chat_composer_bar.dart';
-import '../widgets/pending_message_bubble.dart';
 import '../widgets/voice_note_recorder.dart';
 
 class ChatRoomScreen extends StatefulWidget {
@@ -57,7 +57,6 @@ class ChatRoomScreen extends StatefulWidget {
 
 class _ChatRoomScreenState extends State<ChatRoomScreen> {
   final _chatApi = ChatApi();
-  final _uploadApi = UploadApi();
   final _messageCache = ChatMessageCacheStore.instance;
   final _pendingStore = PendingOutgoingStore.instance;
   final _picker = ImagePicker();
@@ -66,11 +65,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   final _scrollController = ScrollController();
 
   final List<ChatMessage> _messages = [];
-  final List<PendingOutgoingMessage> _pending = [];
-  String? _awaitingSocketPendingId;
+  ChatAttachmentQueue? _queue;
   bool _loading = true;
   bool _loadingMore = false;
-  bool _sending = false;
+  bool _textSending = false;
   String? _error;
   String? _cursor;
   bool _hasMore = true;
@@ -97,11 +95,38 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     _errorSub = widget.socket.onError.listen(_onSocketError);
     _scrollController.addListener(_onScroll);
     _hydrateFromCache().then((_) => _loadMessages());
+    _initAttachmentQueue();
+  }
+
+  /// M4: per-room attachment queue over the shared M3 scheduler. Legacy
+  /// single-shot pending rows are purged (see _hydrateFromCache).
+  Future<void> _initAttachmentQueue() async {
+    final ayId = widget.academicYearId;
+    if (ayId == null || ayId.isEmpty) return;
+    final scheduler = ChatUploadPool.acquire(
+      userId: _userId,
+      getToken: () => SessionStorage().getToken(),
+    );
+    final queue = ChatAttachmentQueue(
+      scheduler: scheduler,
+      socket: widget.socket,
+      files: ChatFileApi(),
+      getToken: () => SessionStorage().getToken(),
+      userId: _userId,
+      roomId: widget.room.id,
+      academicYearId: ayId,
+    );
+    _queue = queue;
+    try {
+      await queue.recover();
+    } catch (_) {}
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
-    _persistPending();
+    _queue?.dispose();
+    _queue = null;
     _messageSub?.cancel();
     _deletedSub?.cancel();
     _updatedSub?.cancel();
@@ -115,17 +140,11 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   void _onSocketMessage(ChatMessage message) {
     if (message.roomId != widget.room.id) return;
     if (_messages.any((m) => m.id == message.id)) return;
-    final me = widget.session.payload.id;
     setState(() {
       _messages.add(message);
-      if (message.sender.id == me && _awaitingSocketPendingId != null) {
-        _pending.removeWhere((p) => p.localId == _awaitingSocketPendingId);
-        _awaitingSocketPendingId = null;
-      }
     });
     widget.socket.markRead(roomId: widget.room.id, messageId: message.id);
     _persistMessages();
-    _persistPending();
     _scrollToBottom();
   }
 
@@ -153,11 +172,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
   void _onSocketError(String message) {
     if (!mounted) return;
-    if (_awaitingSocketPendingId != null) {
-      _markPendingFailed(_awaitingSocketPendingId!);
-      _awaitingSocketPendingId = null;
-      if (mounted) setState(() => _sending = false);
-    }
+    // M4: attachment sends use ack callbacks (errors surface on the send
+    // attempt itself). Broadcast errors remain informational only.
     _showError(message);
   }
 
@@ -170,17 +186,14 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
   Future<void> _hydrateFromCache() async {
     final cached = await _messageCache.loadRoom(userId: _userId, roomId: widget.room.id);
-    final pending = await _pendingStore.loadRoom(userId: _userId, roomId: widget.room.id);
+    // M4 migration: legacy single-shot pending rows belong to the retired
+    // upload path. The M3 task store is now authoritative for pending work
+    // (recovered via the attachment queue), so drop the legacy rows instead
+    // of resurrecting them as failed ghosts.
+    try {
+      await _pendingStore.deleteRoom(userId: _userId, roomId: widget.room.id);
+    } catch (_) {}
     if (!mounted) return;
-
-    final restoredPending = <PendingOutgoingMessage>[];
-    for (final item in pending) {
-      if (item.hasPersistableFile) {
-        final path = item.localFilePath;
-        if (path == null || !await File(path).exists()) continue;
-      }
-      restoredPending.add(item);
-    }
 
     setState(() {
       if (cached != null && cached.messages.isNotEmpty) {
@@ -190,11 +203,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         _cursor = cached.cursor;
         _hasMore = cached.hasMore;
         _loading = false;
-      }
-      if (restoredPending.isNotEmpty) {
-        _pending
-          ..clear()
-          ..addAll(restoredPending);
       }
     });
   }
@@ -206,14 +214,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       messages: _messages,
       cursor: _cursor,
       hasMore: _hasMore,
-    );
-  }
-
-  Future<void> _persistPending() {
-    return _pendingStore.saveRoom(
-      userId: _userId,
-      roomId: widget.room.id,
-      pending: _pending,
     );
   }
 
@@ -307,12 +307,44 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
   Future<void> _sendText() async {
     final text = _composer.text.trim();
-    if (text.isEmpty || _sending || !widget.room.canPost) return;
+    if (text.isEmpty || _textSending || !widget.room.canPost) return;
 
-    setState(() => _sending = true);
+    setState(() => _textSending = true);
     _composer.clear();
     widget.socket.sendMessage(roomId: widget.room.id, content: text);
-    if (mounted) setState(() => _sending = false);
+    if (mounted) setState(() => _textSending = false);
+  }
+
+  /// M4: sends the queue's settled attachments as ONE message (selection
+  /// order) with the composer text as caption. Uploads were already done by
+  /// M3 — this only creates the message, idempotently (same key on retry).
+  Future<void> _sendAttachments() async {
+    final queue = _queue;
+    if (queue == null) return;
+    final caption = _composer.text.trim();
+    if (caption.isNotEmpty) _composer.clear();
+    try {
+      final message = await queue.send(
+        caption: caption.isEmpty ? null : caption,
+      );
+      if (!mounted) return;
+      setState(() {
+        if (!_messages.any((m) => m.id == message.id)) {
+          _messages.add(message);
+        }
+      });
+      await _persistMessages();
+      _scrollToBottom();
+    } on AttachmentLimitException catch (e) {
+      _showError(e.message);
+    } on StateError catch (e) {
+      _showError(e.message);
+    } catch (e) {
+      // ChatSendException text is already user-safe; leave the failed send
+      // in the tray for explicit retry (same clientMessageId).
+      _showError(e.toString());
+      if (caption.isNotEmpty) _composer.text = caption;
+    }
   }
 
   Future<double?> _videoDurationSeconds(File file) async {
@@ -331,135 +363,39 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   static const int _maxVoiceBytes = 5 * 1024 * 1024; // 5 MB
   static const int _maxVideoBytes = 1024 * 1024 * 1024; // 1 GB
 
-  Future<void> _sendMedia({
-    required File file,
-    required String fileName,
-    required String purpose,
-    required String messageType,
-    String? durationSeconds,
-    String? previewLabel,
-    String? mimeType,
-  }) async {
+  /// Guards shared by every picker: room context + per-file size caps.
+  /// The backend remains authoritative; these only fail fast with UX copy.
+  Future<File?> _guardAttachment(File file, int maxBytes) async {
     final ayId = widget.academicYearId;
     if (ayId == null || ayId.isEmpty) {
       _showError('Academic year is required for attachments');
-      return;
+      return null;
     }
-    if (!widget.room.canPost) return;
-
-    // Client-side size validation (backend enforces authoritatively)
+    if (!widget.room.canPost) return null;
+    if (_queue == null) {
+      _showError('Attachments are not ready yet');
+      return null;
+    }
     final fileSize = await file.length();
-    final maxBytes = purpose == 'voice_note'
-        ? _maxVoiceBytes
-        : purpose == 'video'
-            ? _maxVideoBytes
-            : _maxDocumentBytes;
     if (fileSize > maxBytes) {
       final maxMB = maxBytes ~/ (1024 * 1024);
       _showError('File too large (max ${maxMB}MB)');
-      return;
+      return null;
     }
+    return file;
+  }
 
-    final localId = 'local-${DateTime.now().millisecondsSinceEpoch}';
-    final persistedPath = await _pendingStore.persistMediaFile(
-      userId: _userId,
-      localId: localId,
-      source: file,
-    );
-    final pending = PendingOutgoingMessage(
-      localId: localId,
-      type: messageType,
-      previewLabel: previewLabel,
-      localFilePath: persistedPath ?? file.path,
-      fileName: fileName,
-      purpose: purpose,
-      durationSeconds: durationSeconds,
-      academicYearId: ayId,
-    );
-    setState(() {
-      _pending.add(pending);
-      _sending = true;
-    });
-    await _persistPending();
-    _scrollToBottom();
-
+  Future<void> _enqueuePhoto(File file, String fileName) async {
+    final ok = await _guardAttachment(file, _maxDocumentBytes);
+    if (ok == null) return;
     try {
-      final uploaded = await _uploadApi.uploadChatFile(
-        token: widget.session.token,
-        file: file,
-        fileName: fileName,
-        roomId: widget.room.id,
-        academicYearId: ayId,
-        purpose: purpose,
-        durationSeconds: durationSeconds,
-        mimeType: mimeType,
-        onProgress: (p) {
-          if (!mounted) return;
-          setState(() {
-            final idx = _pending.indexWhere((m) => m.localId == localId);
-            if (idx >= 0) {
-              _pending[idx] = _pending[idx].copyWith(progress: p);
-            }
-          });
-        },
-      );
-      if (!mounted) return;
-      setState(() {
-        final idx = _pending.indexWhere((m) => m.localId == localId);
-        if (idx >= 0) {
-          _pending[idx] = _pending[idx].copyWith(progress: 1, phase: PendingSendPhase.sending);
-        }
-      });
-      widget.socket.sendMessage(
-        roomId: widget.room.id,
-        type: messageType,
-        mediaFileId: uploaded.id,
-      );
-      _awaitingSocketPendingId = localId;
-      await _persistPending();
-    } on ApiException catch (e) {
-      _markPendingFailed(localId);
-      _awaitingSocketPendingId = null;
+      await _queue!.attachPhotos([(file: ok, name: fileName, mime: 'image/jpeg')]);
+      _scrollToBottom();
+    } on AttachmentLimitException catch (e) {
       _showError(e.message);
     } catch (_) {
-      _markPendingFailed(localId);
-      _awaitingSocketPendingId = null;
-      _showError('Failed to upload attachment');
-    } finally {
-      if (mounted) setState(() => _sending = false);
+      _showError('Could not add photo');
     }
-  }
-
-  void _markPendingFailed(String localId) {
-    setState(() {
-      final idx = _pending.indexWhere((m) => m.localId == localId);
-      if (idx >= 0) {
-        _pending[idx] = _pending[idx].copyWith(phase: PendingSendPhase.failed);
-      }
-    });
-    _persistPending();
-  }
-
-  Future<void> _retryPending(PendingOutgoingMessage pending) async {
-    if (pending.phase != PendingSendPhase.failed || _sending) return;
-    final path = pending.localFilePath;
-    if (path == null || path.isEmpty) return;
-    final file = File(path);
-    if (!await file.exists()) {
-      _showError('Attachment file is no longer available');
-      return;
-    }
-    setState(() {
-      _pending.removeWhere((p) => p.localId == pending.localId);
-    });
-    await _sendMedia(
-      file: file,
-      fileName: pending.fileName ?? p.basename(path),
-      purpose: pending.purpose ?? 'chat',
-      messageType: pending.type,
-      durationSeconds: pending.durationSeconds,
-      previewLabel: pending.previewLabel,
-    );
   }
 
   void _showError(String message) {
@@ -477,14 +413,35 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       maxHeight: _maxImageDim,
     );
     if (picked == null) return;
-    final file = File(picked.path);
-    await _sendMedia(
-      file: file,
-      fileName: picked.name,
-      purpose: 'chat',
-      messageType: 'image',
-      previewLabel: 'Photo',
+    await _enqueuePhoto(File(picked.path), picked.name);
+  }
+
+  /// M4 bulk: up to 100 photos/videos combined, max 10 videos per batch.
+  Future<void> _pickPhotosBulk() async {
+    final picked = await _picker.pickMultiImage(
+      imageQuality: 85,
+      maxWidth: _maxImageDim,
+      maxHeight: _maxImageDim,
+      limit: maxBulkMediaTotal,
     );
+    if (picked.isEmpty) return;
+    final queue = _queue;
+    if (queue == null) {
+      _showError('Attachments are not ready yet');
+      return;
+    }
+    final files = <({File file, String name, String? mime})>[
+      for (final x in picked) (file: File(x.path), name: x.name, mime: 'image/jpeg'),
+    ];
+    try {
+      // One call preserves selection order via stable sort indexes.
+      await queue.attachPhotos(files);
+      _scrollToBottom();
+    } on AttachmentLimitException catch (e) {
+      _showError(e.message);
+    } catch (_) {
+      _showError('Could not add photos');
+    }
   }
 
   Future<void> _pickVideo() async {
@@ -496,18 +453,21 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       _showError('Could not read video file');
       return;
     }
+    // Current backend policy (M5 owns the future 10-minute policy).
     if (duration > 120) {
       _showError('Videos must be 2 minutes or shorter');
       return;
     }
-    await _sendMedia(
-      file: file,
-      fileName: picked.name,
-      purpose: 'video',
-      messageType: 'video',
-      durationSeconds: duration.toStringAsFixed(1),
-      previewLabel: 'Video',
-    );
+    final ok = await _guardAttachment(file, _maxVideoBytes);
+    if (ok == null || _queue == null) return;
+    try {
+      await _queue!.attachVideo(file: ok, fileName: picked.name, durationSeconds: duration);
+      _scrollToBottom();
+    } on AttachmentLimitException catch (e) {
+      _showError(e.message);
+    } catch (_) {
+      _showError('Could not add video');
+    }
   }
 
   Future<void> _startVoiceRecording() async {
@@ -549,15 +509,18 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     final file = await _voiceRecorder.finish();
     if (mounted) setState(() {});
     if (file == null) return;
-    await _sendMedia(
-      file: file,
-      fileName: 'voice_${DateTime.now().millisecondsSinceEpoch}.m4a',
-      purpose: 'voice_note',
-      messageType: 'voice_note',
-      durationSeconds: elapsed.inSeconds > 0 ? elapsed.inSeconds.toString() : '1',
-      previewLabel: 'Voice message',
-      mimeType: 'audio/mp4',
-    );
+    final ok = await _guardAttachment(file, _maxVoiceBytes);
+    if (ok == null || _queue == null) return;
+    try {
+      await _queue!.attachVoice(
+        file: ok,
+        fileName: 'voice_${DateTime.now().millisecondsSinceEpoch}.m4a',
+        durationSeconds: (elapsed.inSeconds > 0 ? elapsed.inSeconds : 1).toDouble(),
+      );
+      _scrollToBottom();
+    } catch (_) {
+      _showError('Could not add voice message');
+    }
   }
 
   Future<void> _pickDocument() async {
@@ -566,15 +529,20 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     final platformFile = picked.files.single;
     final path = platformFile.path;
     if (path == null) return;
-    final file = File(path);
-    await _sendMedia(
-      file: file,
-      fileName: platformFile.name,
-      purpose: 'chat',
-      messageType: 'document',
-      previewLabel: platformFile.name,
-      mimeType: platformFile.extension != null ? _guessMime(platformFile.extension!) : null,
-    );
+    final ok = await _guardAttachment(File(path), _maxDocumentBytes);
+    if (ok == null || _queue == null) return;
+    try {
+      await _queue!.attachDocument(
+        file: ok,
+        fileName: platformFile.name,
+        mimeType: platformFile.extension != null
+            ? _guessMime(platformFile.extension!) ?? 'application/octet-stream'
+            : 'application/octet-stream',
+      );
+      _scrollToBottom();
+    } catch (_) {
+      _showError('Could not add document');
+    }
   }
 
   String? _guessMime(String ext) {
@@ -610,6 +578,14 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
               onTap: () {
                 Navigator.pop(ctx);
                 _pickPhoto(ImageSource.gallery);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.collections_outlined),
+              title: const Text('Photos (up to 100)'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickPhotosBulk();
               },
             ),
             ListTile(
@@ -861,7 +837,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         ),
       );
     }
-    if (_messages.isEmpty && _pending.isEmpty) {
+    if (_messages.isEmpty) {
       return const Center(
         child: Text('No messages yet', style: TextStyle(color: AppColors.textMuted)),
       );
@@ -871,26 +847,15 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       controller: _scrollController,
       reverse: true,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      itemCount: _messages.length + _pending.length + (_loadingMore ? 1 : 0),
+      itemCount: _messages.length + (_loadingMore ? 1 : 0),
       itemBuilder: (context, index) {
-        if (_loadingMore && index == _messages.length + _pending.length) {
+        if (_loadingMore && index == _messages.length) {
           return const Padding(
             padding: EdgeInsets.all(12),
             child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
           );
         }
-        final pendingCount = _pending.length;
-        if (index < pendingCount) {
-          final pending = _pending[pendingCount - 1 - index];
-          return PendingMessageBubble(
-            pending: pending,
-            onRetry: pending.phase == PendingSendPhase.failed
-                ? () => _retryPending(pending)
-                : null,
-          );
-        }
-        final msgIndex = index - pendingCount;
-        final message = _messages[_messages.length - 1 - msgIndex];
+        final message = _messages[_messages.length - 1 - index];
         final isMine = message.sender.id == myUserId;
         return _MessageBubble(
           message: message,
@@ -907,19 +872,27 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
   Widget _buildComposer() {
     final recording = _voiceRecorder.phase != VoiceRecorderPhase.idle;
-    return ChatComposerBar(
-      controller: _composer,
-      enabled: widget.room.canPost,
-      sending: _sending,
-      isRecording: recording,
-      isLocked: _voiceRecorder.phase == VoiceRecorderPhase.locked,
-      recordElapsed: _voiceRecorder.elapsed,
-      onAttach: _showAttachmentSheet,
-      onCamera: () => _pickPhoto(ImageSource.camera),
-      onSendText: _sendText,
-      onRecordStart: _startVoiceRecording,
-      onLockedSend: () => _finishVoiceRecording(send: true),
-      onRecordCancel: () => _finishVoiceRecording(send: false),
+    final queue = _queue;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (queue != null && widget.room.canPost)
+          ChatAttachmentTray(queue: queue, onSend: _sendAttachments),
+        ChatComposerBar(
+          controller: _composer,
+          enabled: widget.room.canPost,
+          sending: _textSending,
+          isRecording: recording,
+          isLocked: _voiceRecorder.phase == VoiceRecorderPhase.locked,
+          recordElapsed: _voiceRecorder.elapsed,
+          onAttach: _showAttachmentSheet,
+          onCamera: () => _pickPhoto(ImageSource.camera),
+          onSendText: _sendText,
+          onRecordStart: _startVoiceRecording,
+          onLockedSend: () => _finishVoiceRecording(send: true),
+          onRecordCancel: () => _finishVoiceRecording(send: false),
+        ),
+      ],
     );
   }
 }
@@ -949,7 +922,8 @@ class _MessageBubble extends StatelessWidget {
     final align = isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start;
     final bg = isMine ? AppColors.violet : AppColors.surface;
     final fg = isMine ? Colors.white : AppColors.textPrimary;
-    final isImage = message.isImageMessage && mediaUrl.isNotEmpty && !message.isDeleted;
+    final multi = message.displayAttachments.length > 1 && !message.isDeleted;
+    final isImage = !multi && message.isImageMessage && mediaUrl.isNotEmpty && !message.isDeleted;
     final showCaption = message.isImageMessage && message.hasCaption;
 
     final bubble = Padding(
@@ -982,7 +956,9 @@ class _MessageBubble extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (isImage)
+                if (multi)
+                  ..._multiAttachmentWidgets(message, fg, isMine)
+                else if (isImage)
                   ChatImageBubble(
                     url: mediaUrl,
                     authToken: authToken,
@@ -1027,9 +1003,17 @@ class _MessageBubble extends StatelessWidget {
                   )
                 else if (message.displayText.isNotEmpty)
                   Text(message.displayText, style: TextStyle(color: fg, fontSize: 15, height: 1.35)),
-                if (showCaption)
+                if (showCaption && !multi)
                   Padding(
                     padding: EdgeInsets.fromLTRB(isImage ? 10 : 0, isImage ? 6 : 4, isImage ? 10 : 0, 0),
+                    child: Text(
+                      message.content!.trim(),
+                      style: TextStyle(color: fg, fontSize: 15, height: 1.35),
+                    ),
+                  ),
+                if (multi && message.hasCaption)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(0, 6, 0, 0),
                     child: Text(
                       message.content!.trim(),
                       style: TextStyle(color: fg, fontSize: 15, height: 1.35),
@@ -1051,5 +1035,53 @@ class _MessageBubble extends StatelessWidget {
 
     if (onLongPress == null) return bubble;
     return GestureDetector(onLongPress: onLongPress, behavior: HitTestBehavior.opaque, child: bubble);
+  }
+
+  /// Renders every attachment in selection order, reusing the existing
+  /// single-media bubble widgets (no new rendering stack).
+  List<Widget> _multiAttachmentWidgets(ChatMessage message, Color fg, bool isMine) {
+    final widgets = <Widget>[];
+    for (final media in message.displayAttachments) {
+      final url = resolveChatMediaUrl(media);
+      if (url.isEmpty) continue;
+      if (media.isImage) {
+        widgets.add(Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: ChatImageBubble(url: url, authToken: authToken, onTap: onImageTap),
+        ));
+      } else if (media.isAudio) {
+        widgets.add(Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: ChatVoiceBubble(
+            url: url,
+            authToken: authToken,
+            foregroundColor: fg,
+            accentColor: isMine ? Colors.white : AppColors.violet,
+          ),
+        ));
+      } else if (media.isVideo) {
+        widgets.add(Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: ChatVideoBubble(url: url, authToken: authToken),
+        ));
+      } else {
+        final segment = Uri.tryParse(url)?.pathSegments.lastWhere(
+              (s) => s.isNotEmpty,
+              orElse: () => '',
+            ) ??
+            '';
+        widgets.add(Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: ChatDocumentBubble(
+            url: url,
+            authToken: authToken,
+            fileName: segment.isNotEmpty ? segment : 'Document',
+            foregroundColor: fg,
+            accentColor: isMine ? Colors.white : AppColors.violet,
+          ),
+        ));
+      }
+    }
+    return widgets;
   }
 }

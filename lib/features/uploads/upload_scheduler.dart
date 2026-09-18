@@ -217,6 +217,16 @@ class UploadScheduler {
     _pump();
   }
 
+  /// Drops a task row without touching the server (composer discard paths).
+  /// Server-side cancellation, if needed, is the caller's job ([cancel]).
+  Future<void> deleteTask(String userId, String taskId) async {
+    _userPausedIds.remove(taskId);
+    _systemPausedIds.remove(taskId);
+    await _store.deleteTask(userId, taskId);
+    _emitSummary();
+    _pump();
+  }
+
   /// Connectivity is a HINT: stop scheduling; drivers park at the next chunk
   /// boundary (persisting `paused`); resume is staggered to avoid a storm.
   void handleConnectivityLost() {
@@ -311,6 +321,15 @@ class UploadScheduler {
 
   Future<void> _pumpAsync(String userId) async {
     if (_disposed || !_online || !_foreground) return;
+    try {
+      await _pumpScan(userId);
+    } catch (_) {
+      // Transient store failure (lock, teardown race): leave tasks queued;
+      // the next pump trigger retries. Never crash the queue on a read.
+    }
+  }
+
+  Future<void> _pumpScan(String userId) async {
     final queued = await _store.listUserTasks(userId, states: {UploadTaskState.queued});
     if (queued.isEmpty) {
       _emitSummary();
