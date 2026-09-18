@@ -9,6 +9,7 @@ import '../../uploads/resumable_upload_engine.dart' show UploadTokenProvider;
 import '../../uploads/upload_scheduler.dart';
 import '../../uploads/upload_task.dart';
 import '../../uploads/upload_task_store.dart';
+import '../../../core/api/api_exception.dart';
 import '../models/chat_models.dart';
 import 'chat_api.dart';
 import 'chat_file_api.dart';
@@ -509,7 +510,15 @@ class ChatAttachmentQueue extends ChangeNotifier {
         Map<String, dynamic> meta;
         try {
           meta = await _files.getFileMeta(token: token, fileId: id);
-        } catch (e) {
+        } on ApiException catch (e) {
+          // 410 Gone = owner-visible policy rejection (converges polling);
+          // anything else is transport noise → keep polling until deadline.
+          if (e.statusCode == 410) {
+            _markRejected(id, e.message.isNotEmpty ? e.message : 'This file was rejected.');
+            throw StateError(_rejectedFiles.values.last);
+          }
+          continue;
+        } catch (_) {
           throw StateError('Could not verify media. Please try again.');
         }
         final status = meta['processingStatus'] as String?;
@@ -519,17 +528,21 @@ class ChatAttachmentQueue extends ChangeNotifier {
           final reason = (meta['processingError'] as String?)?.isNotEmpty == true
               ? meta['processingError'] as String
               : 'This file was rejected.';
-          for (final entry in tray) {
-            if (entry.task?.fileRecordId == id) {
-              _rejectedFiles[entry.item.taskId] = reason;
-            }
-          }
-          notifyListeners();
+          _markRejected(id, reason);
           throw StateError(reason);
         }
         // PENDING/PROCESSING → keep polling.
       }
     }
+  }
+
+  void _markRejected(String fileRecordId, String reason) {
+    for (final entry in tray) {
+      if (entry.task?.fileRecordId == fileRecordId) {
+        _rejectedFiles[entry.item.taskId] = reason;
+      }
+    }
+    notifyListeners();
   }
 
   /// Remove semantics (§27): uploading → M3 cancel; completed-unsent →
