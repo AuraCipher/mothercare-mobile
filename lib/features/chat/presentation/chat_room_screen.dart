@@ -327,6 +327,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     }
   }
 
+  static const int _maxDocumentBytes = 20 * 1024 * 1024; // 20 MB
+  static const int _maxVoiceBytes = 5 * 1024 * 1024; // 5 MB
+  static const int _maxVideoBytes = 1024 * 1024 * 1024; // 1 GB
+
   Future<void> _sendMedia({
     required File file,
     required String fileName,
@@ -342,6 +346,19 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       return;
     }
     if (!widget.room.canPost) return;
+
+    // Client-side size validation (backend enforces authoritatively)
+    final fileSize = await file.length();
+    final maxBytes = purpose == 'voice_note'
+        ? _maxVoiceBytes
+        : purpose == 'video'
+            ? _maxVideoBytes
+            : _maxDocumentBytes;
+    if (fileSize > maxBytes) {
+      final maxMB = maxBytes ~/ (1024 * 1024);
+      _showError('File too large (max ${maxMB}MB)');
+      return;
+    }
 
     final localId = 'local-${DateTime.now().millisecondsSinceEpoch}';
     final persistedPath = await _pendingStore.persistMediaFile(
@@ -450,8 +467,15 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  static const int _maxImageDim = 2048; // Max width/height for chat images
+
   Future<void> _pickPhoto(ImageSource source) async {
-    final picked = await _picker.pickImage(source: source, imageQuality: 85);
+    final picked = await _picker.pickImage(
+      source: source,
+      imageQuality: 85,
+      maxWidth: _maxImageDim,
+      maxHeight: _maxImageDim,
+    );
     if (picked == null) return;
     final file = File(picked.path);
     await _sendMedia(
