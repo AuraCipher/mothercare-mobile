@@ -76,6 +76,11 @@ class FakeFiles extends ChatFileApi {
   Future<void> deleteFile({required String token, required String fileId}) async {
     deleted.add(fileId);
   }
+
+  @override
+  Future<Map<String, dynamic>> getFileMeta({required String token, required String fileId}) async {
+    return {'processingStatus': 'READY'};
+  }
 }
 
 ({UploadScheduler scheduler, FakeSocket socket, FakeFiles files, ChatAttachmentQueue queue})

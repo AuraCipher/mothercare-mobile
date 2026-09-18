@@ -360,8 +360,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   }
 
   static const int _maxDocumentBytes = 20 * 1024 * 1024; // 20 MB
-  static const int _maxVoiceBytes = 5 * 1024 * 1024; // 5 MB
-  static const int _maxVideoBytes = 1024 * 1024 * 1024; // 1 GB
+  // M5: no MB product cap for voice (duration ≤10 min is authoritative,
+  // server-probed). 1 GiB is the shared infrastructure object ceiling.
+  static const int _maxVoiceBytes = 1024 * 1024 * 1024;
+  static const int _maxVideoBytes = 1024 * 1024 * 1024; // 1 GiB
 
   /// Guards shared by every picker: room context + per-file size caps.
   /// The backend remains authoritative; these only fail fast with UX copy.
@@ -453,9 +455,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       _showError('Could not read video file');
       return;
     }
-    // Current backend policy (M5 owns the future 10-minute policy).
-    if (duration > 120) {
-      _showError('Videos must be 2 minutes or shorter');
+    // M5: server-validated 10-minute policy (probe is authoritative).
+    if (duration > 600) {
+      _showError('Videos must be 10 minutes or shorter');
       return;
     }
     final ok = await _guardAttachment(file, _maxVideoBytes);

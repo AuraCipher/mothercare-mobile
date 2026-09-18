@@ -257,6 +257,11 @@ class UploadScheduler {
     _resumePaused(stagger: true);
   }
 
+  /// Read-only task listing (recovery adopts completed/failed work that
+  /// [recover] intentionally skips — it only returns drivable tasks).
+  Future<List<UploadTask>> listTasks(String userId, {Set<UploadTaskState>? states}) =>
+      _store.listUserTasks(userId, states: states);
+
   /// Startup / login recovery: load incomplete tasks, validate + reconcile
   /// each against the server, and requeue what's eligible. User-paused tasks
   /// stay paused (explicit resume only). Never assumes the last HTTP request

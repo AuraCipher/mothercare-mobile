@@ -74,6 +74,8 @@ UploadTask makeTask({
   int serverBytes = 0,
   UploadTaskState state = UploadTaskState.queued,
   String purpose = 'document',
+  String? fileRecordId,
+  String? fileUrl,
 }) =>
     UploadTask(
       taskId: taskId,
@@ -87,6 +89,8 @@ UploadTask makeTask({
       expectedSize: expectedSize,
       serverBytes: serverBytes,
       state: state,
+      fileRecordId: fileRecordId,
+      fileUrl: fileUrl,
     );
 
 /// Scripted in-memory M1/M2 server. Records every PATCH range so tests can

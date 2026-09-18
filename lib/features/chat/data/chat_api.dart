@@ -1,3 +1,4 @@
+import '../../../core/api/api_exception.dart';
 import '../../../core/api/authenticated_client.dart';
 import '../models/chat_models.dart';
 
@@ -160,6 +161,28 @@ class ChatApi {
     required String messageId,
   }) async {
     await _client.deleteJson('/chat/messages/$messageId', token: token);
+  }
+
+  /// M5: send-intent reconciliation — did (roomId, clientMessageId) land?
+  /// Returns null on 404 (not sent); throws otherwise.
+  Future<ChatMessage?> fetchMessageByClientKey({
+    required String token,
+    required String roomId,
+    required String clientMessageId,
+  }) async {
+    try {
+      final body = await _client.getJson(
+        '/chat/rooms/$roomId/messages/by-client-key',
+        token: token,
+        query: {'clientMessageId': clientMessageId},
+      );
+      final data = body['data'] as Map<String, dynamic>?;
+      if (data == null) return null;
+      return ChatMessage.fromJson(data);
+    } on ApiException catch (e) {
+      if (e.statusCode == 404) return null;
+      rethrow;
+    }
   }
 
   Future<ChatMessage> updateMessage({

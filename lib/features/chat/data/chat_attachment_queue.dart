@@ -8,9 +8,13 @@ import 'package:path_provider/path_provider.dart';
 import '../../uploads/resumable_upload_engine.dart' show UploadTokenProvider;
 import '../../uploads/upload_scheduler.dart';
 import '../../uploads/upload_task.dart';
+import '../../uploads/upload_task_store.dart';
 import '../models/chat_models.dart';
+import 'chat_api.dart';
 import 'chat_file_api.dart';
 import 'chat_socket_service.dart';
+import 'chat_staging_gc.dart';
+import 'send_intent_store.dart';
 
 /// Bulk selection limits (§7): photos+videos combined, videos subset.
 const int maxBulkMediaTotal = 100;
@@ -74,6 +78,8 @@ class ChatAttachmentQueue extends ChangeNotifier {
     required String roomId,
     required String academicYearId,
     Directory? stagingDir,
+    ChatApi? chatApi,
+    SendIntentStore? intents,
   })  : _scheduler = scheduler,
         _socket = socket,
         _files = files,
@@ -81,7 +87,9 @@ class ChatAttachmentQueue extends ChangeNotifier {
         _userId = userId,
         _roomId = roomId,
         _academicYearId = academicYearId,
-        _stagingDir = stagingDir {
+        _stagingDir = stagingDir,
+        _chatApi = chatApi ?? ChatApi(),
+        _intents = intents ?? SendIntentStore() {
     _taskSub = _scheduler.taskUpdates.listen(_onTaskUpdate);
   }
 
@@ -94,6 +102,8 @@ class ChatAttachmentQueue extends ChangeNotifier {
   final String _academicYearId;
   /// Test seam: avoids path_provider (no platform channels in unit tests).
   final Directory? _stagingDir;
+  final ChatApi _chatApi;
+  final SendIntentStore _intents;
 
   final _items = <String, QueuedAttachment>{}; // taskId -> item
   final _tasks = <String, UploadTask>{}; // taskId -> latest M3 snapshot
@@ -292,6 +302,8 @@ class ChatAttachmentQueue extends ChangeNotifier {
 
   /// Sends ONE message referencing the completed attachments in selection
   /// order (§17). Retries reuse the same clientMessageId (server dedupes).
+  /// M5: the intent is durable (survives kill/restart), media must be READY
+  /// (gated via meta poll), and an adopted prior intent reconciles first.
   /// Returns the created message for the list; echo dedupes by id.
   Future<ChatMessage> send({String? caption}) async {
     if (_sending) throw StateError('Send already in progress');
@@ -300,9 +312,19 @@ class ChatAttachmentQueue extends ChangeNotifier {
       throw StateError('Attachments are not ready to send');
     }
     final ids = [for (final t in ready) t.fileRecordId!];
-    final key = _pendingSend?.clientMessageId ?? newIdempotencyKey();
+    // M5 gating: every file must be processing-READY, not merely uploaded.
+    await _waitForMediaReady(ids);
+    // Adopt a prior uncertain intent for the same file set (restart recovery)
+    // and reconcile it before emitting anything new.
+    var key = _pendingSend?.clientMessageId ?? await _adoptMatchingIntent(ids);
+    if (key != null) {
+      final reconciled = await _reconcileKey(key, ids);
+      if (reconciled != null) return reconciled;
+    }
+    key ??= newIdempotencyKey();
     _sending = true;
     _pendingSend = PendingSend(clientMessageId: key, fileRecordIds: ids, caption: caption);
+    await _persistIntent(SendIntentState.sending, key, ids, caption, null, false);
     notifyListeners();
     try {
       final res = await _socket.sendMessageWithAck(
@@ -319,6 +341,7 @@ class ChatAttachmentQueue extends ChangeNotifier {
         await _dropTask(t.taskId, deleteStaged: true);
       }
       _pendingSend = null;
+      await _intents.deleteIntent(_userId, _roomId, key);
       notifyListeners();
       return message;
     } on ChatSendException catch (e) {
@@ -330,6 +353,9 @@ class ChatAttachmentQueue extends ChangeNotifier {
         error: e.message,
         uncertain: e.uncertain,
       );
+      await _persistIntent(
+          e.uncertain ? SendIntentState.uncertain : SendIntentState.failed,
+          key, ids, caption, e.message, e.uncertain);
       notifyListeners();
       rethrow;
     } finally {
@@ -339,10 +365,38 @@ class ChatAttachmentQueue extends ChangeNotifier {
   }
 
   /// Explicit retry of a failed send — SAME clientMessageId (idempotent).
-  Future<ChatMessage> retrySend() {
-    final pending = _pendingSend;
+  /// After a restart the key is restored from the persisted intent whose
+  /// file set matches the current tray (never a mismatched key).
+  Future<ChatMessage> retrySend() async {
+    var pending = _pendingSend;
     if (pending == null || pending.state != PendingSendState.failed) {
-      throw StateError('No failed send to retry');
+      final currentIds = {
+        for (final t in completedTasks) t.fileRecordId!,
+      };
+      final intents = await _intents.listRoomIntents(_userId, _roomId);
+      SendIntent? match;
+      for (final intent in intents) {
+        if (intent.state != SendIntentState.failed &&
+            intent.state != SendIntentState.uncertain) {
+          continue;
+        }
+        final intentIds = intent.fileRecordIds.toSet();
+        if (intentIds.length == currentIds.length && intentIds.containsAll(currentIds)) {
+          match = intent;
+          break;
+        }
+      }
+      if (match == null) throw StateError('No failed send to retry');
+      pending = PendingSend(
+        clientMessageId: match.clientMessageId,
+        fileRecordIds: match.fileRecordIds,
+        caption: match.caption,
+        state: PendingSendState.failed,
+        error: match.error,
+        uncertain: match.uncertain,
+      );
+      _pendingSend = pending;
+      notifyListeners();
     }
     return send(caption: pending.caption);
   }
@@ -351,6 +405,130 @@ class ChatAttachmentQueue extends ChangeNotifier {
     if (_pendingSend?.state == PendingSendState.failed) {
       _pendingSend = null;
       notifyListeners();
+    }
+  }
+
+  /// Files the server refused to process (reason per taskId). In-memory —
+  /// re-derived on every send attempt, so restarts converge identically.
+  final _rejectedFiles = <String, String>{};
+  String? rejectedReason(String taskId) => _rejectedFiles[taskId];
+
+  Future<void> _persistIntent(
+    SendIntentState state,
+    String key,
+    List<String> ids,
+    String? caption,
+    String? error,
+    bool uncertain,
+  ) async {
+    try {
+      final existing = await _intents.loadIntent(_userId, _roomId, key);
+      await _intents.saveIntent(
+        _userId,
+        SendIntent(
+          clientMessageId: key,
+          roomId: _roomId,
+          fileRecordIds: ids,
+          caption: caption,
+          state: state,
+          retryCount: (existing?.retryCount ?? 0) + 1,
+          error: error,
+          uncertain: uncertain,
+          createdAt: existing?.createdAt,
+        ),
+      );
+    } catch (_) {}
+  }
+
+  /// Restart recovery: an uncertain/sending intent for the same file set
+  /// means a previous send may have landed — adopt its key.
+  Future<String?> _adoptMatchingIntent(List<String> ids) async {
+    try {
+      final intents = await _intents.listRoomIntents(_userId, _roomId);
+      final wanted = ids.toSet();
+      for (final intent in intents) {
+        if (intent.state != SendIntentState.sending &&
+            intent.state != SendIntentState.uncertain) {
+          continue;
+        }
+        final have = intent.fileRecordIds.toSet();
+        if (have.length == wanted.length && have.containsAll(wanted)) {
+          return intent.clientMessageId;
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Reconcile an adopted key: returns the message if the server already
+  /// has it (adopt + detach like a fresh success), else null to proceed.
+  Future<ChatMessage?> _reconcileKey(String key, List<String> ids) async {
+    try {
+      final token = await _getToken();
+      if (token == null) return null;
+      final found = await _chatApi.fetchMessageByClientKey(
+        token: token,
+        roomId: _roomId,
+        clientMessageId: key,
+      );
+      if (found == null) return null;
+      // Landed earlier: detach the now-sent tray tasks by fileRecordId.
+      for (final entry in tray) {
+        final task = entry.task;
+        if (task?.fileRecordId != null && ids.contains(task!.fileRecordId)) {
+          await _dropTask(entry.item.taskId, deleteStaged: true);
+        }
+      }
+      await _intents.deleteIntent(_userId, _roomId, key);
+      _pendingSend = null;
+      notifyListeners();
+      return found;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// M5 send gating: every file must be processing-READY, not merely
+  /// uploaded. Polls meta with backoff (bounded); REJECTED/FAILED aborts
+  /// the send with a per-file reason surfaced in the tray.
+  Future<void> _waitForMediaReady(List<String> fileRecordIds) async {
+    final token = await _getToken();
+    if (token == null) throw StateError('Not signed in. Please sign in again.');
+    final deadline = DateTime.now().add(const Duration(seconds: 120));
+    final pending = Set<String>.of(fileRecordIds);
+    var delay = Duration.zero;
+    while (pending.isNotEmpty) {
+      if (DateTime.now().isAfter(deadline)) {
+        throw StateError('Media is still processing. Please try sending again.');
+      }
+      if (delay > Duration.zero) await Future.delayed(delay);
+      delay = delay == Duration.zero
+          ? const Duration(seconds: 2)
+          : (delay * 2 > const Duration(seconds: 10) ? const Duration(seconds: 10) : delay * 2);
+      for (final id in pending.toList()) {
+        Map<String, dynamic> meta;
+        try {
+          meta = await _files.getFileMeta(token: token, fileId: id);
+        } catch (e) {
+          throw StateError('Could not verify media. Please try again.');
+        }
+        final status = meta['processingStatus'] as String?;
+        if (status == null || status == 'READY') {
+          pending.remove(id);
+        } else if (status == 'REJECTED' || status == 'FAILED') {
+          final reason = (meta['processingError'] as String?)?.isNotEmpty == true
+              ? meta['processingError'] as String
+              : 'This file was rejected.';
+          for (final entry in tray) {
+            if (entry.task?.fileRecordId == id) {
+              _rejectedFiles[entry.item.taskId] = reason;
+            }
+          }
+          notifyListeners();
+          throw StateError(reason);
+        }
+        // PENDING/PROCESSING → keep polling.
+      }
     }
   }
 
@@ -407,9 +585,21 @@ class ChatAttachmentQueue extends ChangeNotifier {
   }
 
   /// Restart/login recovery: adopt this room's tasks from the M3 store
-  /// (uploads survive the process; the tray rebuilds from task state).
+  /// (uploads survive the process; the tray rebuilds from task state),
+  /// then reconcile persisted send intents: uncertain sends that landed
+  /// detach their tray tasks; failed ones restore the retry affordance.
+  /// Finishes with bounded staged-file GC (never touches live work).
   Future<void> recover() async {
     final tasks = await _scheduler.recover(_userId);
+    // Completed/failed uploads are terminal for the M3 driver (recover skips
+    // them) but the tray still owns them: completed-unsent stay sendable,
+    // failed stay retryable.
+    try {
+      tasks.addAll(await _scheduler.listTasks(
+        _userId,
+        states: {UploadTaskState.completed, UploadTaskState.failed},
+      ));
+    } catch (_) {}
     var maxSort = _sortCounter;
     for (final task in tasks) {
       final scope = task.scope;
@@ -425,7 +615,82 @@ class ChatAttachmentQueue extends ChangeNotifier {
       _tasks[task.taskId] = task;
     }
     if (maxSort > _sortCounter) _sortCounter = maxSort;
+    await _reconcilePersistedIntents();
+    await _collectGarbage();
     notifyListeners();
+  }
+
+  /// Bounded staged-file GC (M5 §30): never touches in-flight work,
+  /// never leaves the user dir, never throws.
+  Future<void> _collectGarbage() async {
+    try {
+      final Directory base;
+      if (_stagingDir case final stagingDir?) {
+        base = stagingDir;
+      } else {
+        final docs = await getApplicationDocumentsDirectory();
+        base = Directory(docs.path);
+      }
+      final userDir = Directory(p.join(base.path, 'mcs_chat_cache', _userId));
+      await const ChatStagingGC().collect(
+        userCacheDir: userDir,
+        store: UploadTaskStore(),
+        userId: _userId,
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _reconcilePersistedIntents() async {
+    List<SendIntent> intents;
+    try {
+      intents = await _intents.listRoomIntents(_userId, _roomId);
+    } catch (_) {
+      return;
+    }
+    final token = await _getToken();
+    for (final intent in intents) {
+      if (intent.state == SendIntentState.failed) {
+        // Restore the retry affordance if its files are still in the tray.
+        final currentIds = {
+          for (final t in completedTasks) t.fileRecordId!,
+        };
+        final want = intent.fileRecordIds.toSet();
+        if (want.length == currentIds.length && want.containsAll(currentIds)) {
+          _pendingSend = PendingSend(
+            clientMessageId: intent.clientMessageId,
+            fileRecordIds: intent.fileRecordIds,
+            caption: intent.caption,
+            state: PendingSendState.failed,
+            error: intent.error,
+            uncertain: intent.uncertain,
+          );
+        }
+        continue;
+      }
+      if (token == null) continue;
+      // SENDING/UNCERTAIN: ask the server whether it landed.
+      ChatMessage? found;
+      try {
+        found = await _chatApi.fetchMessageByClientKey(
+          token: token,
+          roomId: _roomId,
+          clientMessageId: intent.clientMessageId,
+        );
+      } catch (_) {
+        continue; // offline: keep the intent for the next resume
+      }
+      if (found != null) {
+        for (final entry in tray.toList()) {
+          final task = entry.task;
+          if (task?.fileRecordId != null &&
+              intent.fileRecordIds.contains(task!.fileRecordId)) {
+            await _dropTask(entry.item.taskId, deleteStaged: true);
+          }
+        }
+        await _intents.deleteIntent(_userId, _roomId, intent.clientMessageId);
+      }
+      // Not found: intent stays; the next send() adopts its key.
+    }
   }
 
   String _kindFor(UploadTask task) {

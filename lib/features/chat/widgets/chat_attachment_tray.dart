@@ -51,6 +51,7 @@ class ChatAttachmentTray extends StatelessWidget {
                       kind: entry.item.kind,
                       fileName: entry.item.fileName,
                       task: entry.task,
+                      rejectedReason: queue.rejectedReason(entry.item.taskId),
                     );
                   },
                 ),
@@ -133,6 +134,7 @@ class _AttachmentTile extends StatelessWidget {
     required this.kind,
     required this.fileName,
     required this.task,
+    required this.rejectedReason,
   });
 
   final ChatAttachmentQueue queue;
@@ -140,13 +142,16 @@ class _AttachmentTile extends StatelessWidget {
   final String kind;
   final String fileName;
   final UploadTask? task;
+  final String? rejectedReason;
 
   @override
   Widget build(BuildContext context) {
     final state = task?.state;
     final progress = task?.progress ?? 0.0;
-    final failed = state == UploadTaskState.failed || state == UploadTaskState.expired;
-    final done = state == UploadTaskState.completed;
+    final failed = rejectedReason != null ||
+        state == UploadTaskState.failed ||
+        state == UploadTaskState.expired;
+    final done = rejectedReason == null && state == UploadTaskState.completed;
     final active = state != null &&
         (state == UploadTaskState.uploading ||
             state == UploadTaskState.queued ||
@@ -174,11 +179,11 @@ class _AttachmentTile extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                 child: Text(
-                  failed
+                  rejectedReason ?? (failed
                       ? 'Failed'
                       : done
                           ? 'Ready'
-                          : '${(progress * 100).round()}%',
+                          : '${(progress * 100).round()}%'),
                   style: TextStyle(
                     fontSize: 10,
                     color: failed ? AppColors.error : AppColors.textMuted,
@@ -193,7 +198,10 @@ class _AttachmentTile extends StatelessWidget {
             top: 0,
             right: 0,
             child: _TileAction(
-              failed: failed,
+              // Server-rejected files can only be removed (re-upload would
+              // fail identically); failed uploads offer retry + remove.
+              failed: failed && rejectedReason == null,
+              rejected: rejectedReason != null,
               done: done,
               active: active,
               onRemove: () => queue.removeAttachment(taskId),
@@ -240,6 +248,7 @@ class _AttachmentTile extends StatelessWidget {
 class _TileAction extends StatelessWidget {
   const _TileAction({
     required this.failed,
+    required this.rejected,
     required this.done,
     required this.active,
     required this.onRemove,
@@ -248,6 +257,7 @@ class _TileAction extends StatelessWidget {
   });
 
   final bool failed;
+  final bool rejected;
   final bool done;
   final bool active;
   final VoidCallback onRemove;
@@ -256,6 +266,9 @@ class _TileAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (rejected) {
+      return _circleBtn(context, Icons.close_rounded, onRemove);
+    }
     if (failed) {
       return Row(
         mainAxisSize: MainAxisSize.min,
