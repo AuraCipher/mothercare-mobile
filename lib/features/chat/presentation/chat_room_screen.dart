@@ -467,7 +467,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  static const int _maxImageDim = 2048; // Max width/height for chat images
+  static const double _maxImageDim = 2048; // Max width/height for chat images
 
   Future<void> _pickPhoto(ImageSource source) async {
     final picked = await _picker.pickImage(
