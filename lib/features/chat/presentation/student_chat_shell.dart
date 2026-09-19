@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../student/presentation/student_chat_nav.dart';
 import '../../../core/push/chat_push_service.dart';
+import '../../../core/push/push_room_resolve.dart';
+import '../../../core/storage/cache_constants.dart';
 import '../../../core/storage/chat_message_cache_store.dart';
 import '../../../core/storage/pending_outgoing_store.dart';
 import '../data/chat_upload_pool.dart';
@@ -53,11 +55,22 @@ class _StudentChatShellState extends State<StudentChatShell> {
   }
 
   void _bindPush() {
-    ChatPushService.instance.setRoomTapHandler((roomId, roomName) {
+    ChatPushService.instance.setRoomTapHandler((roomId, roomName) async {
       if (!mounted) return;
       final bootstrap = _bootstrap;
       if (bootstrap == null) return;
       setState(() => _tab = StudentNavTab.chats);
+      // M9: resolve the authoritative kind from cached landing data first;
+      // the name heuristic inside openStudentChatRoomFromPush is fallback.
+      String? kind;
+      try {
+        final landing = await _sessionStorage.readChatLandingCache(
+          scope: ChatLandingScope.student,
+          userId: widget.session.payload.id,
+        );
+        if (landing != null) kind = findCachedPushRoom(landing, roomId)?.kind;
+      } catch (_) {}
+      if (!mounted) return;
       openStudentChatRoomFromPush(
         context: context,
         session: widget.session,
@@ -65,6 +78,7 @@ class _StudentChatShellState extends State<StudentChatShell> {
         roomId: roomId,
         roomName: roomName,
         bootstrap: bootstrap,
+        roomKind: kind,
       );
     });
     ChatPushService.instance.bindSession(widget.session.token);

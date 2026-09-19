@@ -40,6 +40,11 @@ class SessionStorage {
     if (payload != null && payload.branchIds.isNotEmpty) {
       await _storage.write(key: _kBranchId, value: payload.branchIds.first);
     }
+    // M9: a fresh login must never see a previous device user's cached rows
+    // (kill-without-logout leaves them behind; logout wipe never ran).
+    if (payload != null) {
+      await _kv.deleteAllExceptUser(payload.id);
+    }
   }
 
   Future<String?> getToken() => _storage.read(key: _kToken);
@@ -117,8 +122,9 @@ class SessionStorage {
     await _kv.put(key: key, category: category, userId: userId, data: data);
   }
 
-  Future<CachedEnvelope?> _readKv(String key, {String? legacySecureKey}) async {
-    var envelope = await _kv.get(key);
+  Future<CachedEnvelope?> _readKv(String key, {String? userId, String? legacySecureKey}) async {
+    // M9: scope reads to the caller so User B can never read User A's rows.
+    var envelope = await _kv.get(key, userId: userId);
     if (envelope != null) return envelope;
     if (legacySecureKey == null) return null;
     final raw = await _storage.read(key: legacySecureKey);
@@ -141,7 +147,8 @@ class SessionStorage {
   }
 
   Future<StudentBootstrap?> readBootstrapCache() async {
-    final envelope = await _readKv(_kBootstrapCache, legacySecureKey: _kBootstrapCache);
+    final userId = (await readSession())?.payload.id;
+    final envelope = await _readKv(_kBootstrapCache, userId: userId, legacySecureKey: _kBootstrapCache);
     if (envelope != null) {
       if (envelope.isExpired(CacheTtls.bootstrap)) return null;
       try {
@@ -169,7 +176,7 @@ class SessionStorage {
     String? branchId,
   }) async {
     final key = chatLandingCacheKey(scope: scope, userId: userId, branchId: branchId);
-    var envelope = await _readKv(key, legacySecureKey: key);
+    var envelope = await _readKv(key, userId: userId, legacySecureKey: key);
     if (envelope == null && scope == ChatLandingScope.student) {
       envelope = await _readKv(key, legacySecureKey: _kChatLandingCache);
     }
@@ -191,7 +198,8 @@ class SessionStorage {
   }
 
   Future<TeacherBootstrap?> readTeacherBootstrapCache() async {
-    final envelope = await _readKv(_kTeacherBootstrapCache, legacySecureKey: _kTeacherBootstrapCache);
+    final userId = (await readSession())?.payload.id;
+    final envelope = await _readKv(_kTeacherBootstrapCache, userId: userId, legacySecureKey: _kTeacherBootstrapCache);
     if (envelope != null) {
       if (envelope.isExpired(CacheTtls.bootstrap)) return null;
       try {
@@ -210,7 +218,8 @@ class SessionStorage {
   }
 
   Future<StaffBootstrap?> readStaffBootstrapCache() async {
-    final envelope = await _readKv(_kStaffBootstrapCache, legacySecureKey: _kStaffBootstrapCache);
+    final userId = (await readSession())?.payload.id;
+    final envelope = await _readKv(_kStaffBootstrapCache, userId: userId, legacySecureKey: _kStaffBootstrapCache);
     if (envelope != null) {
       if (envelope.isExpired(CacheTtls.bootstrap)) return null;
       try {

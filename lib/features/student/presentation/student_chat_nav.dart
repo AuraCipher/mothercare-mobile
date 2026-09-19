@@ -115,8 +115,11 @@ void openStudentChatRoomFromPush({
   required String roomId,
   required String roomName,
   required StudentBootstrap bootstrap,
+  // M9: authoritative kind resolved from cached landing data by the caller.
+  // Falls back to the name heuristic only when absent (legacy path).
+  String? roomKind,
 }) {
-  final kind = inferStudentSystemRoomKind(roomName) ?? '';
+  final kind = (roomKind != null && roomKind.isNotEmpty) ? roomKind : (inferStudentSystemRoomKind(roomName) ?? '');
   openStudentChatRoom(
     context: context,
     session: session,

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/push/chat_push_nav.dart';
+import '../models/chat_models.dart';
 import '../../../core/push/chat_push_service.dart';
+import '../../../core/push/push_room_resolve.dart';
+import '../../../core/storage/cache_constants.dart';
 import '../../../core/storage/chat_message_cache_store.dart';
 import '../../../core/storage/pending_outgoing_store.dart';
 import '../data/chat_upload_pool.dart';
@@ -11,6 +13,7 @@ import '../../../core/storage/session_storage.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/universal_header.dart';
 import '../../auth/presentation/login_screen.dart';
+import '../../teacher/presentation/teacher_chat_nav.dart';
 import '../../teacher/data/teacher_api.dart';
 import '../../teacher/models/teacher_bootstrap.dart';
 import '../data/chat_socket_service.dart';
@@ -52,19 +55,36 @@ class _TeacherChatShellState extends State<TeacherChatShell> {
   }
 
   void _bindPush() {
-    ChatPushService.instance.setRoomTapHandler((roomId, roomName) {
+    ChatPushService.instance.setRoomTapHandler((roomId, roomName) async {
       if (!mounted) return;
       final bootstrap = _bootstrap;
       if (bootstrap == null) return;
       setState(() => _tab = PortalNavTab.chats);
-      openChatRoomFromPush(
+      // M9: resolve the authoritative kind from cached landing data so
+      // teacher system feeds open TeacherSystemRoomScreen (previously every
+      // push fell back to the generic room screen).
+      String kind = '';
+      try {
+        final landing = await _sessionStorage.readChatLandingCache(
+          scope: ChatLandingScope.teacher,
+          userId: widget.session.payload.id,
+          branchId: bootstrap.branchId,
+        );
+        if (landing != null) kind = findCachedPushRoom(landing, roomId)?.kind ?? '';
+      } catch (_) {}
+      if (!mounted) return;
+      openTeacherChatRoom(
         context: context,
         session: widget.session,
         socket: _socket,
-        roomId: roomId,
-        roomName: roomName,
-        academicYearId: bootstrap.academicYearId,
-        branchId: bootstrap.branchId,
+        room: ChatRoomSummary(
+          id: roomId,
+          kind: kind,
+          name: roomName,
+          canPost: false,
+          unreadCount: 0,
+        ),
+        bootstrap: bootstrap,
       );
     });
     ChatPushService.instance.bindSession(widget.session.token);

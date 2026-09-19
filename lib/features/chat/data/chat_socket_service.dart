@@ -11,11 +11,15 @@ class ChatSocketService {
   final _deletedController = StreamController<String>.broadcast();
   final _updatedController = StreamController<ChatMessage>.broadcast();
   final _errorController = StreamController<String>.broadcast();
+  // M9: fires on every (re)connect so screens can reconcile persisted
+  // send intents when connectivity returns.
+  final _connectController = StreamController<void>.broadcast();
 
   Stream<ChatMessage> get onMessage => _messageController.stream;
   Stream<String> get onMessageDeleted => _deletedController.stream;
   Stream<ChatMessage> get onMessageUpdated => _updatedController.stream;
   Stream<String> get onError => _errorController.stream;
+  Stream<void> get onConnect => _connectController.stream;
   bool get isConnected => _socket?.connected ?? false;
 
   void connect({
@@ -41,6 +45,7 @@ class ChatSocketService {
     _socket!
       ..onConnect((_) {
         _socket!.emit('chat:join', {'academicYearId': academicYearId});
+        if (!_connectController.isClosed) _connectController.add(null);
       })
       ..on('chat:message:new', (data) {
         if (data is Map) {
@@ -178,6 +183,7 @@ class ChatSocketService {
     _deletedController.close();
     _updatedController.close();
     _errorController.close();
+    _connectController.close();
   }
 }
 

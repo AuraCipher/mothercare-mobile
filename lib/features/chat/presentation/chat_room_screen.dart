@@ -16,6 +16,8 @@ import '../data/chat_attachment_queue.dart';
 import '../data/chat_file_api.dart';
 import '../data/chat_socket_service.dart';
 import '../data/chat_upload_pool.dart';
+import '../data/send_intent_store.dart';
+import '../data/text_send_queue.dart';
 import '../../../core/storage/chat_message_cache_store.dart';
 import '../../../core/storage/pending_outgoing_store.dart';
 import '../../../core/widgets/offline_banner.dart';
@@ -66,6 +68,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
   final List<ChatMessage> _messages = [];
   ChatAttachmentQueue? _queue;
+  TextSendQueue? _textQueue;
+  StreamSubscription<void>? _connectSub;
   bool _loading = true;
   bool _loadingMore = false;
   bool _textSending = false;
@@ -93,9 +97,36 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     _deletedSub = widget.socket.onMessageDeleted.listen(_onSocketMessageDeleted);
     _updatedSub = widget.socket.onMessageUpdated.listen(_onSocketMessageUpdated);
     _errorSub = widget.socket.onError.listen(_onSocketError);
+    _connectSub = widget.socket.onConnect.listen((_) => _onSocketConnect());
     _scrollController.addListener(_onScroll);
     _hydrateFromCache().then((_) => _loadMessages());
     _initAttachmentQueue();
+    _initTextQueue();
+  }
+
+  /// M9: durable offline text queue (same intent machinery as attachments).
+  /// Recovers persisted intents now and on every reconnect.
+  void _initTextQueue() {
+    final queue = TextSendQueue(
+      socket: widget.socket,
+      getToken: () => SessionStorage().getToken(),
+      userId: _userId,
+      roomId: widget.room.id,
+    );
+    queue.addListener(_onTextQueueChanged);
+    _textQueue = queue;
+    queue.recover().catchError((_) {});
+  }
+
+  void _onTextQueueChanged() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _onSocketConnect() async {
+    try {
+      await _textQueue?.recover();
+    } catch (_) {}
+    if (mounted) setState(() {});
   }
 
   /// M4: per-room attachment queue over the shared M3 scheduler. Legacy
@@ -127,6 +158,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   void dispose() {
     _queue?.dispose();
     _queue = null;
+    _textQueue?.removeListener(_onTextQueueChanged);
+    _textQueue?.dispose();
+    _textQueue = null;
+    _connectSub?.cancel();
     _messageSub?.cancel();
     _deletedSub?.cancel();
     _updatedSub?.cancel();
@@ -308,11 +343,55 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   Future<void> _sendText() async {
     final text = _composer.text.trim();
     if (text.isEmpty || _textSending || !widget.room.canPost) return;
+    final queue = _textQueue;
+    if (queue == null) return;
 
     setState(() => _textSending = true);
     _composer.clear();
-    widget.socket.sendMessage(roomId: widget.room.id, content: text);
-    if (mounted) setState(() => _textSending = false);
+    try {
+      final message = await queue.sendText(text);
+      if (!mounted) return;
+      if (!_messages.any((m) => m.id == message.id)) {
+        setState(() => _messages.add(message));
+        _persistMessages();
+        _scrollToBottom();
+      }
+    } on ChatSendException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.uncertain
+              ? 'Send timed out — kept for retry. Tap Retry to reconcile.'
+              : 'Message saved — will send when online. Tap Retry to send now.'),
+          action: SnackBarAction(label: 'Retry', onPressed: _retryPendingTexts),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _textSending = false);
+    }
+  }
+
+  /// Retry every failed/uncertain pending text with its SAME key (idempotent).
+  Future<void> _retryPendingTexts() async {
+    final queue = _textQueue;
+    if (queue == null) return;
+    for (final pending in queue.pendings) {
+      if (pending.state == SendIntentState.failed ||
+          pending.state == SendIntentState.uncertain) {
+        try {
+          final message = await queue.retryText(pending.clientMessageId);
+          if (!mounted) return;
+          if (!_messages.any((m) => m.id == message.id)) {
+            setState(() => _messages.add(message));
+            _persistMessages();
+            _scrollToBottom();
+          }
+        } on ChatSendException {
+          // Intent persists with updated state; tile shows Retry again.
+        }
+      }
+    }
+    if (mounted) setState(() {});
   }
 
   /// M4: sends the queue's settled attachments as ONE message (selection
@@ -823,6 +902,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     );
   }
 
+  /// M9: durable outbox (newest last). Acked server echoes arrive via
+  /// socket and remove their pending tile through the queue listener.
+  List<TextPending> get _textPendings => _textQueue?.pendings ?? const [];
+
   Widget _buildMessageList(String myUserId) {
     if (_loading) {
       return const Center(child: CircularProgressIndicator(color: AppColors.violet));
@@ -839,7 +922,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         ),
       );
     }
-    if (_messages.isEmpty) {
+    if (_messages.isEmpty && _textPendings.isEmpty) {
       return const Center(
         child: Text('No messages yet', style: TextStyle(color: AppColors.textMuted)),
       );
@@ -849,15 +932,23 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       controller: _scrollController,
       reverse: true,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      itemCount: _messages.length + (_loadingMore ? 1 : 0),
+      itemCount: _messages.length + _textPendings.length + (_loadingMore ? 1 : 0),
       itemBuilder: (context, index) {
-        if (_loadingMore && index == _messages.length) {
+        if (_loadingMore && index == _messages.length + _textPendings.length) {
           return const Padding(
             padding: EdgeInsets.all(12),
             child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
           );
         }
-        final message = _messages[_messages.length - 1 - index];
+        // M9: durable outbox first (newest at the bottom, like sent messages).
+        if (index < _textPendings.length) {
+          final pending = _textPendings[_textPendings.length - 1 - index];
+          return _PendingTextTile(
+            pending: pending,
+            onRetry: () => _retryPendingTexts(),
+          );
+        }
+        final message = _messages[_messages.length - 1 - (index - _textPendings.length)];
         final isMine = message.sender.id == myUserId;
         return _MessageBubble(
           message: message,
@@ -899,8 +990,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   }
 }
 
-class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({
+class _MessageBubble extends StatelessWidget {  const _MessageBubble({
     required this.message,
     required this.isMine,
     required this.mediaUrl,
@@ -1085,5 +1175,68 @@ class _MessageBubble extends StatelessWidget {
       }
     }
     return widgets;
+  }
+}
+
+/// M9: durable outbox tile for a text intent not yet acknowledged.
+/// Dimmed bubble with state icon; failed/uncertain tiles retry on tap
+/// with the SAME clientMessageId (server dedupes — no duplicates).
+class _PendingTextTile extends StatelessWidget {
+  const _PendingTextTile({required this.pending, required this.onRetry});
+
+  final TextPending pending;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final failed = pending.state == SendIntentState.failed ||
+        pending.state == SendIntentState.uncertain;
+    final icon = pending.state == SendIntentState.sending
+        ? Icons.schedule
+        : failed
+            ? Icons.error_outline
+            : Icons.check;
+    final label = pending.state == SendIntentState.sending
+        ? 'Sending…'
+        : failed
+            ? 'Not sent — tap to retry'
+            : 'Sent';
+    return Align(
+      alignment: Alignment.centerRight,
+      child: GestureDetector(
+        onTap: failed ? onRetry : null,
+        child: Opacity(
+          opacity: failed ? 0.75 : 0.6,
+          child: Container(
+            margin: const EdgeInsets.symmetric(vertical: 3),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.75,
+            ),
+            decoration: BoxDecoration(
+              color: AppColors.violet.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.violet.withValues(alpha: 0.35)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(pending.text, style: const TextStyle(color: AppColors.textPrimary)),
+                const SizedBox(height: 2),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: 12, color: AppColors.textMuted),
+                    const SizedBox(width: 4),
+                    Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

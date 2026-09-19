@@ -22,13 +22,18 @@ class DashboardCacheStore {
     await _kv.put(key: key, category: category, userId: userId, data: data);
   }
 
-  Future<CachedEnvelope?> read(String key) => _kv.get(key);
+  Future<CachedEnvelope?> read(String key, {String? userId}) async {
+    // M9: default to the current session user so cross-login reads are scoped.
+    final uid = userId ?? (await _session.readSession())?.payload.id;
+    return _kv.get(key, userId: uid);
+  }
 
   Future<Map<String, dynamic>?> readData(
     String key, {
     Duration ttl = CacheTtls.dashboard,
+    String? userId,
   }) async {
-    final envelope = await read(key);
+    final envelope = await read(key, userId: userId);
     if (envelope == null || envelope.isExpired(ttl)) return null;
     return envelope.data;
   }

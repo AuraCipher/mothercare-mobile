@@ -34,13 +34,15 @@ class SqliteKvCache {
     );
   }
 
-  Future<CachedEnvelope?> get(String key) async {
+  /// M9: when [userId] is given, only that user's row may be read.
+  /// Unscoped reads exist only for logged-out/legacy fallbacks.
+  Future<CachedEnvelope?> get(String key, {String? userId}) async {
     if (testMode) return null;
     final db = await AppDatabase.instance.database;
     final rows = await db.query(
       'kv_cache',
-      where: 'cache_key = ?',
-      whereArgs: [key],
+      where: userId == null ? 'cache_key = ?' : 'cache_key = ? AND user_id = ?',
+      whereArgs: userId == null ? [key] : [key, userId],
       limit: 1,
     );
     if (rows.isEmpty) return null;
@@ -51,5 +53,14 @@ class SqliteKvCache {
     if (testMode) return;
     final db = await AppDatabase.instance.database;
     await db.delete('kv_cache', where: 'cache_key = ?', whereArgs: [key]);
+  }
+
+  /// M9: purge every kv row that does not belong to [userId].
+  /// Called on login so a previous device user's cached data (e.g. after an
+  /// app kill without logout) can never be read by the new login.
+  Future<void> deleteAllExceptUser(String userId) async {
+    if (testMode) return;
+    final db = await AppDatabase.instance.database;
+    await db.delete('kv_cache', where: 'user_id != ?', whereArgs: [userId]);
   }
 }
