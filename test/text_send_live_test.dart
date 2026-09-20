@@ -13,9 +13,12 @@ import 'package:mobile/features/chat/data/text_send_queue.dart';
 /// Opt-in LIVE E2E (M9 §6): real Flutter queue plus real Socket.IO plus real
 /// backend plus real PostgreSQL. Nothing mocked except the process boundary.
 ///
-/// Runs ONLY when all env vars are present:
-///   M9_LIVE_BACKEND=1 M9_API_URL=http://127.0.0.1:5003 M9_TOKEN=<jwt>
-///   M9_ROOM_ID=<room> M9_USER_ID=<user> M9_AY_ID=<ay>
+/// Runs ONLY when all env vars are present (example values shown with
+/// placeholder tokens, not HTML):
+///   M9_LIVE_BACKEND=1
+///   M9_API_URL=http://127.0.0.1:5003
+///   M9_TOKEN set to a jwt, M9_ROOM_ID set to a room,
+///   M9_USER_ID set to a user, M9_AY_ID set to an ay.
 ///
 /// Backend setup (m6_test): a group_chat room + branch_admin membership so
 /// the sender can post; membership heals on first access.

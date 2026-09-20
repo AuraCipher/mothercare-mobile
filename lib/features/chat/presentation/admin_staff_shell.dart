@@ -33,6 +33,9 @@ class _AdminStaffShellState extends State<AdminStaffShell> {
   final _sessionStorage = SessionStorage();
   final _socket = ChatSocketService();
   StaffBootstrap? _bootstrap;
+  // M10: cold-start tap arriving before bootstrap loads is stashed and
+  // flushed once bootstrap is ready (never dropped).
+  ({String roomId, String roomName})? _pendingPushTap;
   String? _error;
   bool _loading = true;
   PortalNavTab _tab = PortalNavTab.chats;
@@ -55,19 +58,27 @@ class _AdminStaffShellState extends State<AdminStaffShell> {
     ChatPushService.instance.setRoomTapHandler((roomId, roomName) {
       if (!mounted) return;
       final bootstrap = _bootstrap;
-      if (bootstrap == null) return;
-      setState(() => _tab = PortalNavTab.chats);
-      openChatRoomFromPush(
-        context: context,
-        session: widget.session,
-        socket: _socket,
-        roomId: roomId,
-        roomName: roomName,
-        academicYearId: bootstrap.academicYearId,
-        branchId: bootstrap.branchId,
-      );
+      if (bootstrap == null) {
+        _pendingPushTap = (roomId: roomId, roomName: roomName);
+        return;
+      }
+      _openPushRoom(roomId, roomName, bootstrap);
     });
     ChatPushService.instance.bindSession(widget.session.token);
+  }
+
+  void _openPushRoom(String roomId, String roomName, StaffBootstrap bootstrap) {
+    if (!mounted) return;
+    setState(() => _tab = PortalNavTab.chats);
+    openChatRoomFromPush(
+      context: context,
+      session: widget.session,
+      socket: _socket,
+      roomId: roomId,
+      roomName: roomName,
+      academicYearId: bootstrap.academicYearId,
+      branchId: bootstrap.branchId,
+    );
   }
 
   void _applyBootstrap(StaffBootstrap data) {
@@ -77,6 +88,12 @@ class _AdminStaffShellState extends State<AdminStaffShell> {
       _loading = false;
       _error = null;
     });
+    // M10: flush any push tap that arrived before bootstrap was ready.
+    final pending = _pendingPushTap;
+    if (pending != null) {
+      _pendingPushTap = null;
+      _openPushRoom(pending.roomId, pending.roomName, data);
+    }
   }
 
   Future<void> _loadBootstrap() async {

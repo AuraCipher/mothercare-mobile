@@ -36,6 +36,9 @@ class _TeacherChatShellState extends State<TeacherChatShell> {
   final _sessionStorage = SessionStorage();
   final _socket = ChatSocketService();
   TeacherBootstrap? _bootstrap;
+  // M10: cold-start tap arriving tap arriving before bootstrap loads is stashed and
+  // flushed once bootstrap is ready (never dropped).
+  ({String roomId, String roomName})? _pendingPushTap;
   String? _error;
   bool _loading = true;
   PortalNavTab _tab = PortalNavTab.chats;
@@ -58,36 +61,44 @@ class _TeacherChatShellState extends State<TeacherChatShell> {
     ChatPushService.instance.setRoomTapHandler((roomId, roomName) async {
       if (!mounted) return;
       final bootstrap = _bootstrap;
-      if (bootstrap == null) return;
-      setState(() => _tab = PortalNavTab.chats);
-      // M9: resolve the authoritative kind from cached landing data so
-      // teacher system feeds open TeacherSystemRoomScreen (previously every
-      // push fell back to the generic room screen).
-      String kind = '';
-      try {
-        final landing = await _sessionStorage.readChatLandingCache(
-          scope: ChatLandingScope.teacher,
-          userId: widget.session.payload.id,
-          branchId: bootstrap.branchId,
-        );
-        if (landing != null) kind = findCachedPushRoom(landing, roomId)?.kind ?? '';
-      } catch (_) {}
-      if (!mounted) return;
-      openTeacherChatRoom(
-        context: context,
-        session: widget.session,
-        socket: _socket,
-        room: ChatRoomSummary(
-          id: roomId,
-          kind: kind,
-          name: roomName,
-          canPost: false,
-          unreadCount: 0,
-        ),
-        bootstrap: bootstrap,
-      );
+      if (bootstrap == null) {
+        _pendingPushTap = (roomId: roomId, roomName: roomName);
+        return;
+      }
+      await _openPushRoom(roomId, roomName, bootstrap);
     });
     ChatPushService.instance.bindSession(widget.session.token);
+  }
+
+  Future<void> _openPushRoom(String roomId, String roomName, TeacherBootstrap bootstrap) async {
+    if (!mounted) return;
+    setState(() => _tab = PortalNavTab.chats);
+    // M9: resolve the authoritative kind from cached landing data so
+    // teacher system feeds open TeacherSystemRoomScreen (previously every
+    // push fell back to the generic room screen).
+    String kind = '';
+    try {
+      final landing = await _sessionStorage.readChatLandingCache(
+        scope: ChatLandingScope.teacher,
+        userId: widget.session.payload.id,
+        branchId: bootstrap.branchId,
+      );
+      if (landing != null) kind = findCachedPushRoom(landing, roomId)?.kind ?? '';
+    } catch (_) {}
+    if (!mounted) return;
+    openTeacherChatRoom(
+      context: context,
+      session: widget.session,
+      socket: _socket,
+      room: ChatRoomSummary(
+        id: roomId,
+        kind: kind,
+        name: roomName,
+        canPost: false,
+        unreadCount: 0,
+      ),
+      bootstrap: bootstrap,
+    );
   }
 
   void _applyBootstrap(TeacherBootstrap data) {
@@ -97,6 +108,12 @@ class _TeacherChatShellState extends State<TeacherChatShell> {
       _loading = false;
       _error = null;
     });
+    // M10: flush any push tap that arrived before bootstrap was ready.
+    final pending = _pendingPushTap;
+    if (pending != null) {
+      _pendingPushTap = null;
+      _openPushRoom(pending.roomId, pending.roomName, data);
+    }
   }
 
   Future<void> _loadBootstrap() async {

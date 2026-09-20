@@ -36,6 +36,9 @@ class _StudentChatShellState extends State<StudentChatShell> {
   final _sessionStorage = SessionStorage();
   final _socket = ChatSocketService();
   StudentBootstrap? _bootstrap;
+  // M10: cold-start tap arriving before bootstrap loads is stashed and
+  // flushed once bootstrap is ready (never dropped).
+  ({String roomId, String roomName})? _pendingPushTap;
   String? _error;
   bool _loading = true;
   StudentNavTab _tab = StudentNavTab.chats;
@@ -58,30 +61,38 @@ class _StudentChatShellState extends State<StudentChatShell> {
     ChatPushService.instance.setRoomTapHandler((roomId, roomName) async {
       if (!mounted) return;
       final bootstrap = _bootstrap;
-      if (bootstrap == null) return;
-      setState(() => _tab = StudentNavTab.chats);
-      // M9: resolve the authoritative kind from cached landing data first;
-      // the name heuristic inside openStudentChatRoomFromPush is fallback.
-      String? kind;
-      try {
-        final landing = await _sessionStorage.readChatLandingCache(
-          scope: ChatLandingScope.student,
-          userId: widget.session.payload.id,
-        );
-        if (landing != null) kind = findCachedPushRoom(landing, roomId)?.kind;
-      } catch (_) {}
-      if (!mounted) return;
-      openStudentChatRoomFromPush(
-        context: context,
-        session: widget.session,
-        socket: _socket,
-        roomId: roomId,
-        roomName: roomName,
-        bootstrap: bootstrap,
-        roomKind: kind,
-      );
+      if (bootstrap == null) {
+        _pendingPushTap = (roomId: roomId, roomName: roomName);
+        return;
+      }
+      await _openPushRoom(roomId, roomName, bootstrap);
     });
     ChatPushService.instance.bindSession(widget.session.token);
+  }
+
+  Future<void> _openPushRoom(String roomId, String roomName, StudentBootstrap bootstrap) async {
+    if (!mounted) return;
+    setState(() => _tab = StudentNavTab.chats);
+    // M9: resolve the authoritative kind from cached landing data first;
+    // the name heuristic inside openStudentChatRoomFromPush is fallback.
+    String? kind;
+    try {
+      final landing = await _sessionStorage.readChatLandingCache(
+        scope: ChatLandingScope.student,
+        userId: widget.session.payload.id,
+      );
+      if (landing != null) kind = findCachedPushRoom(landing, roomId)?.kind;
+    } catch (_) {}
+    if (!mounted) return;
+    openStudentChatRoomFromPush(
+      context: context,
+      session: widget.session,
+      socket: _socket,
+      roomId: roomId,
+      roomName: roomName,
+      bootstrap: bootstrap,
+      roomKind: kind,
+    );
   }
 
   void _applyBootstrap(StudentBootstrap data) {
@@ -94,6 +105,12 @@ class _StudentChatShellState extends State<StudentChatShell> {
       _loading = false;
       _error = null;
     });
+    // M10: flush any push tap that arrived before bootstrap was ready.
+    final pending = _pendingPushTap;
+    if (pending != null) {
+      _pendingPushTap = null;
+      _openPushRoom(pending.roomId, pending.roomName, data);
+    }
   }
 
   Future<void> _loadBootstrap() async {
