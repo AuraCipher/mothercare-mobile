@@ -47,17 +47,18 @@ Uint8List mp4Seconds(int seconds, {String handler = 'vide'}) {
 /// Runs ONLY with:
 ///   M5_LIVE_BACKEND=1 M5_API_URL=http://127.0.0.1:5000 M5_TOKEN=`<jwt>`
 ///   M5_ROOM_ID=m5-room M5_AY_ID=m5-ay
-/// plus `--dart-define=API_BASE_URL=http://127.0.0.1:5000`.
+/// plus `--dart-define=API_BASE_URL=<same-host>`.
 /// Fixture rows are created out-of-band (see m5-report). Skipped in CI.
 void main() {
   final enabled = Platform.environment['M5_LIVE_BACKEND'] == '1';
-  final baseUrl = Platform.environment['M5_API_URL'] ?? 'http://127.0.0.1:5000';
+  // No hardcoded fallback: the target backend must come from the environment.
+  final baseUrl = Platform.environment['M5_API_URL'] ?? '';
   final token = Platform.environment['M5_TOKEN'] ?? '';
   final roomId = Platform.environment['M5_ROOM_ID'] ?? 'm5-room';
   final ayId = Platform.environment['M5_AY_ID'] ?? 'm5-ay';
 
   test('live video upload → probed READY → send → history → reconcile', () async {
-    if (!enabled || token.isEmpty) {
+    if (!enabled || token.isEmpty || baseUrl.isEmpty) {
       markTestSkipped('Set M5_LIVE_BACKEND=1 M5_API_URL=... M5_TOKEN=... M5_ROOM_ID=... to run.');
       return;
     }

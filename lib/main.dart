@@ -62,6 +62,27 @@ class _AuthGateState extends State<AuthGate> {
 
   @override
   Widget build(BuildContext context) {
+    // Fail fast when the build missed `--dart-define=API_BASE_URL=...`.
+    // The backend origin is never hardcoded; it must come from the build.
+    if (!AppConfig.isConfigured) {
+      return const MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(
+          backgroundColor: Colors.white,
+          body: Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Text(
+                'Missing API_BASE_URL.\n\n'
+                'Rebuild with --dart-define=API_BASE_URL=<backend-origin>\n'
+                'or --dart-define-from-file=dart_defines/production.json.',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     if (_loading) {
       return Scaffold(
         backgroundColor: Colors.white,

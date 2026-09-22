@@ -36,7 +36,7 @@ Device/emulator suites under `integration_test/`. Most use an in-process HTTP mo
 
 ### `API_BASE_URL` (Android emulator)
 
-The Flutter app reads the backend origin at **build/test time** via `--dart-define=API_BASE_URL=…` (`lib/config/app_config.dart`). Default: `http://10.0.2.2:5000` (Android emulator alias for the host machine).
+The Flutter app reads the backend origin at **build/test time** via `--dart-define=API_BASE_URL=…` (`lib/config/app_config.dart`). There is **no default** — every build must pass `API_BASE_URL`, otherwise the app shows a configuration error at startup.
 
 | Target | `API_BASE_URL` |
 |--------|----------------|

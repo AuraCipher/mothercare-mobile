@@ -17,18 +17,19 @@ import 'upload_test_support.dart';
 /// Runs ONLY with:
 ///   M4_LIVE_BACKEND=1 M4_API_URL=http://127.0.0.1:5000 M4_TOKEN=`<jwt>`
 ///   M4_ROOM_ID=m4-room M4_AY_ID=m4-ay
-/// plus `--dart-define=API_BASE_URL=http://127.0.0.1:5000` so the default
+/// plus `--dart-define=API_BASE_URL=<same-host>` so the
 /// AppConfig-based clients (ChatApi) hit the same host.
 /// (fixture rows created out-of-band; see m4-report. Skipped in normal CI.)
 void main() {
   final enabled = Platform.environment['M4_LIVE_BACKEND'] == '1';
-  final baseUrl = Platform.environment['M4_API_URL'] ?? 'http://127.0.0.1:5000';
+  // No hardcoded fallback: the target backend must come from the environment.
+  final baseUrl = Platform.environment['M4_API_URL'] ?? '';
   final token = Platform.environment['M4_TOKEN'] ?? '';
   final roomId = Platform.environment['M4_ROOM_ID'] ?? 'm4-room';
   final ayId = Platform.environment['M4_AY_ID'] ?? 'm4-ay';
 
   test('live multi-attachment chat send', () async {
-    if (!enabled || token.isEmpty) {
+    if (!enabled || token.isEmpty || baseUrl.isEmpty) {
       markTestSkipped('Set M4_LIVE_BACKEND=1 M4_API_URL=... M4_TOKEN=... M4_ROOM_ID=... to run.');
       return;
     }

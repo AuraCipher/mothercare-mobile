@@ -17,11 +17,12 @@ import 'upload_test_support.dart';
 /// Skipped in normal CI (no live R2 or backend required).
 void main() {
   final enabled = Platform.environment['M3_LIVE_BACKEND'] == '1';
-  final baseUrl = Platform.environment['M3_API_URL'] ?? 'http://127.0.0.1:5000';
+  // No hardcoded fallback: the target backend must come from the environment.
+  final baseUrl = Platform.environment['M3_API_URL'] ?? '';
   final token = Platform.environment['M3_TOKEN'] ?? '';
 
   test('live resumable upload against local backend', () async {
-    if (!enabled || token.isEmpty) {
+    if (!enabled || token.isEmpty || baseUrl.isEmpty) {
       markTestSkipped('Set M3_LIVE_BACKEND=1 M3_API_URL=... M3_TOKEN=... to run.');
       return;
     }
