@@ -20,13 +20,14 @@ import 'student_system_room_screen.dart';
 import 'chat_contact_picker_screen.dart';
 import 'class_community_screen.dart';
 import '../widgets/new_message_bar.dart';
+import '../widgets/watermarked_chat_view.dart';
 
 class StudentChatLandingScreen extends StatefulWidget {
   const StudentChatLandingScreen({
     super.key,
     required this.session,
     required this.socket,
-    required     this.bootstrap,
+    required this.bootstrap,
     this.onLogout,
   });
 
@@ -36,7 +37,8 @@ class StudentChatLandingScreen extends StatefulWidget {
   final VoidCallback? onLogout;
 
   @override
-  State<StudentChatLandingScreen> createState() => _StudentChatLandingScreenState();
+  State<StudentChatLandingScreen> createState() =>
+      _StudentChatLandingScreenState();
 }
 
 class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
@@ -76,7 +78,9 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
     }
 
     try {
-      final landing = await _chatApi.fetchStudentLanding(token: widget.session.token);
+      final landing = await _chatApi.fetchStudentLanding(
+        token: widget.session.token,
+      );
       await _sessionStorage.saveChatLandingCache(
         landing,
         scope: ChatLandingScope.student,
@@ -178,25 +182,33 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
 
   void _openClassCommunity(ChatLandingSection section) {
     final label = classDisplayName(widget.bootstrap.groupLabel);
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ClassCommunityScreen(
-          session: widget.session,
-          socket: widget.socket,
-          groupLabel: label,
-          section: section,
-          landing: _landing!,
-          academicYearId: widget.bootstrap.academicYearId,
-          onRoomOpened: _clearRoomUnreadLocally,
-        ),
-      ),
-    ).then((_) => _load(preferFresh: true));
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder: (_) => ClassCommunityScreen(
+              session: widget.session,
+              socket: widget.socket,
+              groupLabel: label,
+              section: section,
+              landing: _landing!,
+              academicYearId: widget.bootstrap.academicYearId,
+              onRoomOpened: _clearRoomUnreadLocally,
+            ),
+          ),
+        )
+        .then((_) => _load(preferFresh: true));
   }
 
   List<ChatLandingSection> get _visibleSections {
     final sections = _landing?.sections ?? [];
     return sections
-        .where((s) => s.key != 'school' && s.key != 'class' && s.key != 'contacts' && s.key != 'system')
+        .where(
+          (s) =>
+              s.key != 'school' &&
+              s.key != 'class' &&
+              s.key != 'contacts' &&
+              s.key != 'system',
+        )
         .toList();
   }
 
@@ -230,7 +242,8 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
   Future<void> _openPickerContact(ContactPickerContact contact) async {
     ChatRoomSummary room;
     if (contact.dmRoomId != null && contact.dmRoomId!.isNotEmpty) {
-      room = _landing?.roomById(contact.dmRoomId!) ??
+      room =
+          _landing?.roomById(contact.dmRoomId!) ??
           ChatRoomSummary(
             id: contact.dmRoomId!,
             kind: 'direct_message',
@@ -254,7 +267,8 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
       MaterialPageRoute(
         builder: (_) => ChatContactPickerScreen(
           currentUserId: widget.session.payload.id,
-          fetchContacts: () => _chatApi.fetchStudentContacts(token: widget.session.token),
+          fetchContacts: () =>
+              _chatApi.fetchStudentContacts(token: widget.session.token),
           openRoom: _openPickerContact,
         ),
       ),
@@ -266,7 +280,11 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
     if (_landing == null) return [];
     final raw = _landing!.contacts.isNotEmpty
         ? _landing!.contacts
-        : (_landing!.sections.where((s) => s.key == 'contacts').firstOrNull?.contacts ?? []);
+        : (_landing!.sections
+                  .where((s) => s.key == 'contacts')
+                  .firstOrNull
+                  ?.contacts ??
+              []);
     return landingVisibleContacts(raw, widget.session.payload.id);
   }
 
@@ -291,11 +309,7 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        LandingHeader(
-          title: _headerTitle,
-          onSearch: () {},
-          onMenu: _showMenu,
-        ),
+        LandingHeader(title: _headerTitle, onSearch: () {}, onMenu: _showMenu),
         if (_offline) const OfflineBanner(),
         Expanded(child: _buildBody()),
       ],
@@ -304,7 +318,9 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
 
   Widget _buildBody() {
     if (_loading && _landing == null) {
-      return const Center(child: CircularProgressIndicator(color: AppColors.violet));
+      return const Center(
+        child: CircularProgressIndicator(color: AppColors.violet),
+      );
     }
 
     if (_error != null && _landing == null) {
@@ -314,9 +330,17 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.cloud_off_rounded, size: 48, color: AppColors.textMuted),
+              const Icon(
+                Icons.cloud_off_rounded,
+                size: 48,
+                color: AppColors.textMuted,
+              ),
               const SizedBox(height: 16),
-              Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.error)),
+              Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: AppColors.error),
+              ),
               const SizedBox(height: 16),
               ElevatedButton(onPressed: _load, child: const Text('Retry')),
             ],
@@ -332,8 +356,43 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
     final systemRecords = _systemRecordRooms;
     final hasClass = classSection != null && classSection.rooms.isNotEmpty;
 
-    if (announcement == null && !hasClass && sections.isEmpty && dmRooms.isEmpty && systemRecords.isEmpty) {
-      return Stack(
+    if (announcement == null &&
+        !hasClass &&
+        sections.isEmpty &&
+        dmRooms.isEmpty &&
+        systemRecords.isEmpty) {
+      return WatermarkedChatView(
+        child: Stack(
+          children: [
+            RefreshIndicator(
+              onRefresh: _load,
+              color: AppColors.violet,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.only(bottom: 88),
+                children: const [
+                  SizedBox(height: 120),
+                  Center(
+                    child: Text(
+                      'No chat rooms yet',
+                      style: TextStyle(color: AppColors.textMuted),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Positioned(
+              right: 16,
+              bottom: 16,
+              child: NewMessageFab(onTap: _openContactPicker),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return WatermarkedChatView(
+      child: Stack(
         children: [
           RefreshIndicator(
             onRefresh: _load,
@@ -341,9 +400,38 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.only(bottom: 88),
-              children: const [
-                SizedBox(height: 120),
-                Center(child: Text('No chat rooms yet', style: TextStyle(color: AppColors.textMuted))),
+              children: [
+                if (announcement != null)
+                  _SchoolAnnouncementTile(
+                    room: announcement,
+                    onTap: () => _openRoom(announcement),
+                  ),
+                if (hasClass)
+                  _ClassCommunityEntryTile(
+                    title: classDisplayName(widget.bootstrap.groupLabel),
+                    unread: classCommunityUnread(classSection),
+                    onTap: () => _openClassCommunity(classSection),
+                  ),
+                if (dmRooms.isNotEmpty) ...[
+                  _sectionHeading('Messages'),
+                  ...dmRooms.map(
+                    (room) => ChatRoomTile(
+                      room: room,
+                      displayName: room.name,
+                      onTap: () => _openRoom(room),
+                    ),
+                  ),
+                ],
+                if (systemRecords.isNotEmpty) ...[
+                  _sectionHeading('School Records'),
+                  ...systemRecords.map(
+                    (room) => StudentSystemRecordTile(
+                      room: room,
+                      onTap: () => _openRoom(room),
+                    ),
+                  ),
+                ],
+                ...sections.expand(_buildGenericSection),
               ],
             ),
           ),
@@ -353,65 +441,22 @@ class _StudentChatLandingScreenState extends State<StudentChatLandingScreen> {
             child: NewMessageFab(onTap: _openContactPicker),
           ),
         ],
-      );
-    }
-
-    return Stack(
-      children: [
-        RefreshIndicator(
-          onRefresh: _load,
-          color: AppColors.violet,
-          child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.only(bottom: 88),
-            children: [
-              if (announcement != null)
-                _SchoolAnnouncementTile(room: announcement, onTap: () => _openRoom(announcement)),
-              if (hasClass)
-                _ClassCommunityEntryTile(
-                  title: classDisplayName(widget.bootstrap.groupLabel),
-                  unread: classCommunityUnread(classSection),
-                  onTap: () => _openClassCommunity(classSection),
-                ),
-              if (dmRooms.isNotEmpty) ...[
-                _sectionHeading('Messages'),
-                ...dmRooms.map(
-                  (room) => ChatRoomTile(
-                    room: room,
-                    displayName: room.name,
-                    onTap: () => _openRoom(room),
-                  ),
-                ),
-              ],
-              if (systemRecords.isNotEmpty) ...[
-                _sectionHeading('School Records'),
-                ...systemRecords.map(
-                  (room) => StudentSystemRecordTile(
-                    room: room,
-                    onTap: () => _openRoom(room),
-                  ),
-                ),
-              ],
-              ...sections.expand(_buildGenericSection),
-            ],
-          ),
-        ),
-        Positioned(
-          right: 16,
-          bottom: 16,
-          child: NewMessageFab(onTap: _openContactPicker),
-        ),
-      ],
+      ),
     );
   }
 
   List<Widget> _buildGenericSection(ChatLandingSection section) {
     return [
-      _sectionHeading(displaySectionTitle(section, groupLabel: widget.bootstrap.groupLabel)),
+      _sectionHeading(
+        displaySectionTitle(section, groupLabel: widget.bootstrap.groupLabel),
+      ),
       ...section.rooms.map(
         (room) => ChatRoomTile(
           room: room,
-          displayName: displayRoomName(room, groupLabel: widget.bootstrap.groupLabel),
+          displayName: displayRoomName(
+            room,
+            groupLabel: widget.bootstrap.groupLabel,
+          ),
           onTap: () => _openRoom(room),
         ),
       ),
@@ -466,17 +511,30 @@ class _SchoolAnnouncementTile extends StatelessWidget {
                   children: [
                     Text(
                       room.name,
-                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: AppColors.textPrimary),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                        color: AppColors.textPrimary,
+                      ),
                     ),
                     if (timeLabel != null)
-                      Text(timeLabel, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                      Text(
+                        timeLabel,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
                   ],
                 ),
               ),
               if (room.unreadCount > 0)
                 _UnreadBadge(count: room.unreadCount)
               else
-                const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppColors.textMuted,
+                ),
             ],
           ),
         ),
@@ -519,7 +577,11 @@ class _ClassCommunityEntryTile extends StatelessWidget {
                   color: const Color(0xFFE8F4FF),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.groups_rounded, color: Color(0xFF2563EB), size: 24),
+                child: const Icon(
+                  Icons.groups_rounded,
+                  color: Color(0xFF2563EB),
+                  size: 24,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -536,12 +598,21 @@ class _ClassCommunityEntryTile extends StatelessWidget {
                     ),
                     const Text(
                       'Class community',
-                      style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textMuted,
+                      ),
                     ),
                   ],
                 ),
               ),
-              if (unread > 0) _UnreadBadge(count: unread) else const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
+              if (unread > 0)
+                _UnreadBadge(count: unread)
+              else
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppColors.textMuted,
+                ),
             ],
           ),
         ),
@@ -565,7 +636,11 @@ class _UnreadBadge extends StatelessWidget {
       ),
       child: Text(
         count > 99 ? '99+' : '$count',
-        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }

@@ -34,6 +34,7 @@ import '../widgets/chat_image_viewer_screen.dart';
 import '../widgets/chat_message_actions_sheet.dart';
 import '../widgets/chat_composer_bar.dart';
 import '../widgets/voice_note_recorder.dart';
+import '../widgets/watermarked_chat_view.dart';
 
 class ChatRoomScreen extends StatefulWidget {
   const ChatRoomScreen({
@@ -94,8 +95,12 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     widget.socket.joinRoom(widget.room.id);
     widget.socket.markRead(roomId: widget.room.id);
     _messageSub = widget.socket.onMessage.listen(_onSocketMessage);
-    _deletedSub = widget.socket.onMessageDeleted.listen(_onSocketMessageDeleted);
-    _updatedSub = widget.socket.onMessageUpdated.listen(_onSocketMessageUpdated);
+    _deletedSub = widget.socket.onMessageDeleted.listen(
+      _onSocketMessageDeleted,
+    );
+    _updatedSub = widget.socket.onMessageUpdated.listen(
+      _onSocketMessageUpdated,
+    );
     _errorSub = widget.socket.onError.listen(_onSocketError);
     _connectSub = widget.socket.onConnect.listen((_) => _onSocketConnect());
     _scrollController.addListener(_onScroll);
@@ -214,13 +219,17 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
   void _onScroll() {
     if (!_hasMore || _loadingMore || !_scrollController.hasClients) return;
-    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 80) {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 80) {
       _loadMore();
     }
   }
 
   Future<void> _hydrateFromCache() async {
-    final cached = await _messageCache.loadRoom(userId: _userId, roomId: widget.room.id);
+    final cached = await _messageCache.loadRoom(
+      userId: _userId,
+      roomId: widget.room.id,
+    );
     // M4 migration: legacy single-shot pending rows belong to the retired
     // upload path. The M3 task store is now authoritative for pending work
     // (recovered via the attachment queue), so drop the legacy rows instead
@@ -273,7 +282,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         _messagesOffline = false;
         _error = null;
         _hasMore = messages.length >= 40;
-        _cursor = messages.isNotEmpty ? messages.first.createdAt.toUtc().toIso8601String() : null;
+        _cursor = messages.isNotEmpty
+            ? messages.first.createdAt.toUtc().toIso8601String()
+            : null;
       });
       await _persistMessages();
       _scrollToBottom();
@@ -360,9 +371,11 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(e.uncertain
-              ? 'Send timed out — kept for retry. Tap Retry to reconcile.'
-              : 'Message saved — will send when online. Tap Retry to send now.'),
+          content: Text(
+            e.uncertain
+                ? 'Send timed out — kept for retry. Tap Retry to reconcile.'
+                : 'Message saved — will send when online. Tap Retry to send now.',
+          ),
           action: SnackBarAction(label: 'Retry', onPressed: _retryPendingTexts),
         ),
       );
@@ -470,7 +483,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     final ok = await _guardAttachment(file, _maxDocumentBytes);
     if (ok == null) return;
     try {
-      await _queue!.attachPhotos([(file: ok, name: fileName, mime: 'image/jpeg')]);
+      await _queue!.attachPhotos([
+        (file: ok, name: fileName, mime: 'image/jpeg'),
+      ]);
       _scrollToBottom();
     } on AttachmentLimitException catch (e) {
       _showError(e.message);
@@ -481,7 +496,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
   void _showError(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   static const double _maxImageDim = 2048; // Max width/height for chat images
@@ -512,7 +529,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       return;
     }
     final files = <({File file, String name, String? mime})>[
-      for (final x in picked) (file: File(x.path), name: x.name, mime: 'image/jpeg'),
+      for (final x in picked)
+        (file: File(x.path), name: x.name, mime: 'image/jpeg'),
     ];
     try {
       // One call preserves selection order via stable sort indexes.
@@ -542,7 +560,11 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     final ok = await _guardAttachment(file, _maxVideoBytes);
     if (ok == null || _queue == null) return;
     try {
-      await _queue!.attachVideo(file: ok, fileName: picked.name, durationSeconds: duration);
+      await _queue!.attachVideo(
+        file: ok,
+        fileName: picked.name,
+        durationSeconds: duration,
+      );
       _scrollToBottom();
     } on AttachmentLimitException catch (e) {
       _showError(e.message);
@@ -596,7 +618,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       await _queue!.attachVoice(
         file: ok,
         fileName: 'voice_${DateTime.now().millisecondsSinceEpoch}.m4a',
-        durationSeconds: (elapsed.inSeconds > 0 ? elapsed.inSeconds : 1).toDouble(),
+        durationSeconds: (elapsed.inSeconds > 0 ? elapsed.inSeconds : 1)
+            .toDouble(),
       );
       _scrollToBottom();
     } catch (_) {
@@ -710,13 +733,15 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     });
   }
 
-  String _mediaUrl(ChatMessage message) => resolveChatMediaUrl(message.mediaFile);
+  String _mediaUrl(ChatMessage message) =>
+      resolveChatMediaUrl(message.mediaFile);
 
   Future<void> _openImageViewer(String url) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
         fullscreenDialog: true,
-        builder: (_) => ChatImageViewerScreen(url: url, authToken: widget.session.token),
+        builder: (_) =>
+            ChatImageViewerScreen(url: url, authToken: widget.session.token),
       ),
     );
   }
@@ -755,9 +780,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         message: message,
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Saved ${result.fileName}')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Saved ${result.fileName}')));
       if (message.isDocumentMessage) {
         await openDownloadedMedia(result);
       }
@@ -773,9 +798,14 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete message?'),
-        content: const Text('This message will be removed for everyone in the chat.'),
+        content: const Text(
+          'This message will be removed for everyone in the chat.',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
@@ -787,12 +817,18 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     if (confirmed != true) return;
 
     try {
-      await _chatApi.deleteMessage(token: widget.session.token, messageId: message.id);
+      await _chatApi.deleteMessage(
+        token: widget.session.token,
+        messageId: message.id,
+      );
       if (!mounted) return;
       setState(() {
         final idx = _messages.indexWhere((m) => m.id == message.id);
         if (idx >= 0) {
-          _messages[idx] = _messages[idx].copyWith(isDeleted: true, content: null);
+          _messages[idx] = _messages[idx].copyWith(
+            isDeleted: true,
+            content: null,
+          );
         }
       });
       await _persistMessages();
@@ -816,7 +852,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           decoration: const InputDecoration(hintText: 'Message'),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, controller.text.trim()),
             child: const Text('Save'),
@@ -852,52 +891,64 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF2F2F2),
-      body: Stack(
-        children: [
-          Column(
-            children: [
-              UniversalHeader(
-                title: widget.room.name,
-                showBack: true,
-              ),
-              if (_voiceRecorder.phase != VoiceRecorderPhase.idle)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                  color: AppColors.violet.withValues(alpha: 0.06),
-                  child: Text(
-                    _voiceRecorder.phase == VoiceRecorderPhase.locked
-                        ? 'Recording locked — tap send or delete'
-                        : 'Recording… release to send',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 11, color: AppColors.violet, fontWeight: FontWeight.w500),
+      body: WatermarkedChatView(
+        child: Stack(
+          children: [
+            Column(
+              children: [
+                UniversalHeader(title: widget.room.name, showBack: true),
+                if (_voiceRecorder.phase != VoiceRecorderPhase.idle)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 6,
+                    ),
+                    color: AppColors.violet.withValues(alpha: 0.06),
+                    child: Text(
+                      _voiceRecorder.phase == VoiceRecorderPhase.locked
+                          ? 'Recording locked — tap send or delete'
+                          : 'Recording… release to send',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.violet,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                   ),
-                ),
-              if (_messagesOffline) const OfflineBanner(),
-              if (!widget.room.canPost)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  color: AppColors.surface,
-                  child: const Text(
-                    'Read-only channel',
-                    style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+                if (_messagesOffline) const OfflineBanner(),
+                if (!widget.room.canPost)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    color: AppColors.surface,
+                    child: const Text(
+                      'Read-only channel',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
                   ),
-                ),
-              Expanded(child: _buildMessageList(me)),
-              if (widget.room.canPost) _buildComposer(),
-            ],
-          ),
-          if (_voiceRecorder.phase == VoiceRecorderPhase.recording)
-            Positioned.fill(
-              child: Listener(
-                behavior: HitTestBehavior.translucent,
-                onPointerMove: _onVoicePointerMove,
-                onPointerUp: (_) => _onVoicePointerUp(),
-                onPointerCancel: (_) => _onVoicePointerUp(),
-              ),
+                Expanded(child: _buildMessageList(me)),
+                if (widget.room.canPost) _buildComposer(),
+              ],
             ),
-        ],
+            if (_voiceRecorder.phase == VoiceRecorderPhase.recording)
+              Positioned.fill(
+                child: Listener(
+                  behavior: HitTestBehavior.translucent,
+                  onPointerMove: _onVoicePointerMove,
+                  onPointerUp: (_) => _onVoicePointerUp(),
+                  onPointerCancel: (_) => _onVoicePointerUp(),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -908,7 +959,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
   Widget _buildMessageList(String myUserId) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator(color: AppColors.violet));
+      return const Center(
+        child: CircularProgressIndicator(color: AppColors.violet),
+      );
     }
     if (_error != null) {
       return Center(
@@ -924,7 +977,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     }
     if (_messages.isEmpty && _textPendings.isEmpty) {
       return const Center(
-        child: Text('No messages yet', style: TextStyle(color: AppColors.textMuted)),
+        child: Text(
+          'No messages yet',
+          style: TextStyle(color: AppColors.textMuted),
+        ),
       );
     }
 
@@ -932,12 +988,19 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       controller: _scrollController,
       reverse: true,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      itemCount: _messages.length + _textPendings.length + (_loadingMore ? 1 : 0),
+      itemCount:
+          _messages.length + _textPendings.length + (_loadingMore ? 1 : 0),
       itemBuilder: (context, index) {
         if (_loadingMore && index == _messages.length + _textPendings.length) {
           return const Padding(
             padding: EdgeInsets.all(12),
-            child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+            child: Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
           );
         }
         // M9: durable outbox first (newest at the bottom, like sent messages).
@@ -948,7 +1011,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             onRetry: () => _retryPendingTexts(),
           );
         }
-        final message = _messages[_messages.length - 1 - (index - _textPendings.length)];
+        final message =
+            _messages[_messages.length - 1 - (index - _textPendings.length)];
         final isMine = message.sender.id == myUserId;
         return _MessageBubble(
           message: message,
@@ -957,7 +1021,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           authToken: widget.session.token,
           canPost: widget.room.canPost,
           onLongPress: () => _handleMessageLongPress(message, isMine),
-          onImageTap: message.isImageMessage ? () => _openImageViewer(_mediaUrl(message)) : null,
+          onImageTap: message.isImageMessage
+              ? () => _openImageViewer(_mediaUrl(message))
+              : null,
         );
       },
     );
@@ -990,7 +1056,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   }
 }
 
-class _MessageBubble extends StatelessWidget {  const _MessageBubble({
+class _MessageBubble extends StatelessWidget {
+  const _MessageBubble({
     required this.message,
     required this.isMine,
     required this.mediaUrl,
@@ -1015,7 +1082,11 @@ class _MessageBubble extends StatelessWidget {  const _MessageBubble({
     final bg = isMine ? AppColors.violet : AppColors.surface;
     final fg = isMine ? Colors.white : AppColors.textPrimary;
     final multi = message.displayAttachments.length > 1 && !message.isDeleted;
-    final isImage = !multi && message.isImageMessage && mediaUrl.isNotEmpty && !message.isDeleted;
+    final isImage =
+        !multi &&
+        message.isImageMessage &&
+        mediaUrl.isNotEmpty &&
+        !message.isDeleted;
     final showCaption = message.isImageMessage && message.hasCaption;
 
     final bubble = Padding(
@@ -1028,13 +1099,21 @@ class _MessageBubble extends StatelessWidget {  const _MessageBubble({
               padding: const EdgeInsets.only(left: 4, bottom: 2),
               child: Text(
                 message.sender.name,
-                style: const TextStyle(fontSize: 11, color: AppColors.textMuted, fontWeight: FontWeight.w600),
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: AppColors.textMuted,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           Container(
-            constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.78),
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.sizeOf(context).width * 0.78,
+            ),
             clipBehavior: isImage ? Clip.antiAlias : Clip.none,
-            padding: isImage ? EdgeInsets.zero : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            padding: isImage
+                ? EdgeInsets.zero
+                : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
               color: bg,
               borderRadius: BorderRadius.only(
@@ -1071,10 +1150,17 @@ class _MessageBubble extends StatelessWidget {  const _MessageBubble({
                           children: [
                             Icon(Icons.mic_rounded, color: fg, size: 20),
                             const SizedBox(width: 8),
-                            Text('Voice message', style: TextStyle(color: fg, fontWeight: FontWeight.w600)),
+                            Text(
+                              'Voice message',
+                              style: TextStyle(
+                                color: fg,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ],
                         )
-                else if (message.mediaFile?.isVideo == true || message.type == 'video')
+                else if (message.mediaFile?.isVideo == true ||
+                    message.type == 'video')
                   mediaUrl.isNotEmpty
                       ? ChatVideoBubble(url: mediaUrl, authToken: authToken)
                       : Row(
@@ -1082,7 +1168,13 @@ class _MessageBubble extends StatelessWidget {  const _MessageBubble({
                           children: [
                             Icon(Icons.videocam_rounded, color: fg, size: 20),
                             const SizedBox(width: 8),
-                            Text('Video', style: TextStyle(color: fg, fontWeight: FontWeight.w600)),
+                            Text(
+                              'Video',
+                              style: TextStyle(
+                                color: fg,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ],
                         )
                 else if (message.isDocumentMessage && mediaUrl.isNotEmpty)
@@ -1094,10 +1186,18 @@ class _MessageBubble extends StatelessWidget {  const _MessageBubble({
                     accentColor: isMine ? Colors.white : AppColors.violet,
                   )
                 else if (message.displayText.isNotEmpty)
-                  Text(message.displayText, style: TextStyle(color: fg, fontSize: 15, height: 1.35)),
+                  Text(
+                    message.displayText,
+                    style: TextStyle(color: fg, fontSize: 15, height: 1.35),
+                  ),
                 if (showCaption && !multi)
                   Padding(
-                    padding: EdgeInsets.fromLTRB(isImage ? 10 : 0, isImage ? 6 : 4, isImage ? 10 : 0, 0),
+                    padding: EdgeInsets.fromLTRB(
+                      isImage ? 10 : 0,
+                      isImage ? 6 : 4,
+                      isImage ? 10 : 0,
+                      0,
+                    ),
                     child: Text(
                       message.content!.trim(),
                       style: TextStyle(color: fg, fontSize: 15, height: 1.35),
@@ -1112,10 +1212,18 @@ class _MessageBubble extends StatelessWidget {  const _MessageBubble({
                     ),
                   ),
                 Padding(
-                  padding: EdgeInsets.fromLTRB(isImage ? 10 : 0, 4, isImage ? 10 : 0, isImage ? 8 : 0),
+                  padding: EdgeInsets.fromLTRB(
+                    isImage ? 10 : 0,
+                    4,
+                    isImage ? 10 : 0,
+                    isImage ? 8 : 0,
+                  ),
                   child: Text(
                     time,
-                    style: TextStyle(fontSize: 10, color: isMine ? Colors.white70 : AppColors.textMuted),
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: isMine ? Colors.white70 : AppColors.textMuted,
+                    ),
                   ),
                 ),
               ],
@@ -1126,52 +1234,72 @@ class _MessageBubble extends StatelessWidget {  const _MessageBubble({
     );
 
     if (onLongPress == null) return bubble;
-    return GestureDetector(onLongPress: onLongPress, behavior: HitTestBehavior.opaque, child: bubble);
+    return GestureDetector(
+      onLongPress: onLongPress,
+      behavior: HitTestBehavior.opaque,
+      child: bubble,
+    );
   }
 
   /// Renders every attachment in selection order, reusing the existing
   /// single-media bubble widgets (no new rendering stack).
-  List<Widget> _multiAttachmentWidgets(ChatMessage message, Color fg, bool isMine) {
+  List<Widget> _multiAttachmentWidgets(
+    ChatMessage message,
+    Color fg,
+    bool isMine,
+  ) {
     final widgets = <Widget>[];
     for (final media in message.displayAttachments) {
       final url = resolveChatMediaUrl(media);
       if (url.isEmpty) continue;
       if (media.isImage) {
-        widgets.add(Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child: ChatImageBubble(url: url, authToken: authToken, onTap: onImageTap),
-        ));
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: ChatImageBubble(
+              url: url,
+              authToken: authToken,
+              onTap: onImageTap,
+            ),
+          ),
+        );
       } else if (media.isAudio) {
-        widgets.add(Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child: ChatVoiceBubble(
-            url: url,
-            authToken: authToken,
-            foregroundColor: fg,
-            accentColor: isMine ? Colors.white : AppColors.violet,
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: ChatVoiceBubble(
+              url: url,
+              authToken: authToken,
+              foregroundColor: fg,
+              accentColor: isMine ? Colors.white : AppColors.violet,
+            ),
           ),
-        ));
+        );
       } else if (media.isVideo) {
-        widgets.add(Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child: ChatVideoBubble(url: url, authToken: authToken),
-        ));
-      } else {
-        final segment = Uri.tryParse(url)?.pathSegments.lastWhere(
-              (s) => s.isNotEmpty,
-              orElse: () => '',
-            ) ??
-            '';
-        widgets.add(Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child: ChatDocumentBubble(
-            url: url,
-            authToken: authToken,
-            fileName: segment.isNotEmpty ? segment : 'Document',
-            foregroundColor: fg,
-            accentColor: isMine ? Colors.white : AppColors.violet,
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: ChatVideoBubble(url: url, authToken: authToken),
           ),
-        ));
+        );
+      } else {
+        final segment =
+            Uri.tryParse(
+              url,
+            )?.pathSegments.lastWhere((s) => s.isNotEmpty, orElse: () => '') ??
+            '';
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: ChatDocumentBubble(
+              url: url,
+              authToken: authToken,
+              fileName: segment.isNotEmpty ? segment : 'Document',
+              foregroundColor: fg,
+              accentColor: isMine ? Colors.white : AppColors.violet,
+            ),
+          ),
+        );
       }
     }
     return widgets;
@@ -1189,18 +1317,19 @@ class _PendingTextTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final failed = pending.state == SendIntentState.failed ||
+    final failed =
+        pending.state == SendIntentState.failed ||
         pending.state == SendIntentState.uncertain;
     final icon = pending.state == SendIntentState.sending
         ? Icons.schedule
         : failed
-            ? Icons.error_outline
-            : Icons.check;
+        ? Icons.error_outline
+        : Icons.check;
     final label = pending.state == SendIntentState.sending
         ? 'Sending…'
         : failed
-            ? 'Not sent — tap to retry'
-            : 'Sent';
+        ? 'Not sent — tap to retry'
+        : 'Sent';
     return Align(
       alignment: Alignment.centerRight,
       child: GestureDetector(
@@ -1216,20 +1345,31 @@ class _PendingTextTile extends StatelessWidget {
             decoration: BoxDecoration(
               color: AppColors.violet.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.violet.withValues(alpha: 0.35)),
+              border: Border.all(
+                color: AppColors.violet.withValues(alpha: 0.35),
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(pending.text, style: const TextStyle(color: AppColors.textPrimary)),
+                Text(
+                  pending.text,
+                  style: const TextStyle(color: AppColors.textPrimary),
+                ),
                 const SizedBox(height: 2),
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(icon, size: 12, color: AppColors.textMuted),
                     const SizedBox(width: 4),
-                    Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
                   ],
                 ),
               ],

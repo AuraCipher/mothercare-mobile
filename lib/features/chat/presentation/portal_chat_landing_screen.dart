@@ -17,6 +17,7 @@ import 'class_community_screen.dart';
 import 'chat_contact_picker_screen.dart';
 import 'teacher_system_room_screen.dart';
 import '../widgets/new_message_bar.dart';
+import '../widgets/watermarked_chat_view.dart';
 import '../../teacher/models/teacher_bootstrap.dart';
 import '../../teacher/presentation/teacher_chat_nav.dart';
 
@@ -46,7 +47,8 @@ class PortalChatLandingScreen extends StatefulWidget {
   final TeacherBootstrap? teacherBootstrap;
 
   @override
-  State<PortalChatLandingScreen> createState() => _PortalChatLandingScreenState();
+  State<PortalChatLandingScreen> createState() =>
+      _PortalChatLandingScreenState();
 }
 
 class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
@@ -57,8 +59,9 @@ class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
   bool _loading = true;
   bool _offline = false;
 
-  String get _classesTitle =>
-      widget.kind == PortalChatKind.teacher ? 'My Classes' : 'Class Communities';
+  String get _classesTitle => widget.kind == PortalChatKind.teacher
+      ? 'My Classes'
+      : 'Class Communities';
 
   @override
   void initState() {
@@ -178,16 +181,16 @@ class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
     }
     Navigator.of(context)
         .push(
-      MaterialPageRoute(
-        builder: (_) => ChatRoomScreen(
-          session: widget.session,
-          socket: widget.socket,
-          room: full,
-          academicYearId: widget.academicYearId,
-          branchId: branchId,
-        ),
-      ),
-    )
+          MaterialPageRoute(
+            builder: (_) => ChatRoomScreen(
+              session: widget.session,
+              socket: widget.socket,
+              room: full,
+              academicYearId: widget.academicYearId,
+              branchId: branchId,
+            ),
+          ),
+        )
         .then((_) => _load(preferFresh: true));
   }
 
@@ -195,19 +198,19 @@ class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
     final section = community.toSection();
     Navigator.of(context)
         .push(
-      MaterialPageRoute(
-        builder: (_) => ClassCommunityScreen(
-          session: widget.session,
-          socket: widget.socket,
-          groupLabel: community.groupLabel,
-          section: section,
-          landing: _landing!,
-          academicYearId: widget.academicYearId,
-          branchId: widget.branchId,
-          onRoomOpened: _clearRoomUnreadLocally,
-        ),
-      ),
-    )
+          MaterialPageRoute(
+            builder: (_) => ClassCommunityScreen(
+              session: widget.session,
+              socket: widget.socket,
+              groupLabel: community.groupLabel,
+              section: section,
+              landing: _landing!,
+              academicYearId: widget.academicYearId,
+              branchId: widget.branchId,
+              onRoomOpened: _clearRoomUnreadLocally,
+            ),
+          ),
+        )
         .then((_) => _load(preferFresh: true));
   }
 
@@ -221,7 +224,9 @@ class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
   List<ChatClassCommunity> get _communities {
     if (_landing == null) return [];
     if (_landing!.communities.isNotEmpty) return _landing!.communities;
-    final section = _landing!.sections.where((s) => s.key == 'classes').firstOrNull;
+    final section = _landing!.sections
+        .where((s) => s.key == 'classes')
+        .firstOrNull;
     return section?.communities ?? [];
   }
 
@@ -229,7 +234,11 @@ class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
     if (_landing == null) return [];
     final raw = _landing!.contacts.isNotEmpty
         ? _landing!.contacts
-        : (_landing!.sections.where((s) => s.key == 'contacts').firstOrNull?.contacts ?? []);
+        : (_landing!.sections
+                  .where((s) => s.key == 'contacts')
+                  .firstOrNull
+                  ?.contacts ??
+              []);
     return landingVisibleContacts(raw, widget.session.payload.id);
   }
 
@@ -249,7 +258,8 @@ class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
   Future<void> _openPickerContact(ContactPickerContact contact) async {
     ChatRoomSummary room;
     if (contact.dmRoomId != null && contact.dmRoomId!.isNotEmpty) {
-      room = _landing?.roomById(contact.dmRoomId!) ??
+      room =
+          _landing?.roomById(contact.dmRoomId!) ??
           ChatRoomSummary(
             id: contact.dmRoomId!,
             kind: 'direct_message',
@@ -306,41 +316,51 @@ class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
 
   List<ChatRoomSummary> get _teacherRecords {
     if (widget.kind != PortalChatKind.teacher || _landing == null) return [];
-    final section = _landing!.sections.where((s) => s.key == 'records').firstOrNull;
+    final section = _landing!.sections
+        .where((s) => s.key == 'records')
+        .firstOrNull;
     if (section != null && section.rooms.isNotEmpty) return section.rooms;
     return _landing!.rooms
-        .where((r) => r.kind == 'system_teacher_attendance' || r.kind == 'system_teacher_payroll')
+        .where(
+          (r) =>
+              r.kind == 'system_teacher_attendance' ||
+              r.kind == 'system_teacher_payroll',
+        )
         .toList();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            LandingHeader(
-              title: widget.headerTitle,
-              onSearch: () {},
-              onMenu: widget.onMenu,
-            ),
-            if (_offline) const OfflineBanner(),
-            Expanded(child: _buildBody()),
-          ],
-        ),
-        Positioned(
-          right: 16,
-          bottom: 16,
-          child: NewMessageFab(onTap: _openContactPicker),
-        ),
-      ],
+    return WatermarkedChatView(
+      child: Stack(
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              LandingHeader(
+                title: widget.headerTitle,
+                onSearch: () {},
+                onMenu: widget.onMenu,
+              ),
+              if (_offline) const OfflineBanner(),
+              Expanded(child: _buildBody()),
+            ],
+          ),
+          Positioned(
+            right: 16,
+            bottom: 16,
+            child: NewMessageFab(onTap: _openContactPicker),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildBody() {
     if (_loading && _landing == null) {
-      return const Center(child: CircularProgressIndicator(color: AppColors.violet));
+      return const Center(
+        child: CircularProgressIndicator(color: AppColors.violet),
+      );
     }
 
     if (_error != null && _landing == null) {
@@ -350,9 +370,17 @@ class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.cloud_off_rounded, size: 48, color: AppColors.textMuted),
+              const Icon(
+                Icons.cloud_off_rounded,
+                size: 48,
+                color: AppColors.textMuted,
+              ),
               const SizedBox(height: 16),
-              Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.error)),
+              Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: AppColors.error),
+              ),
               const SizedBox(height: 16),
               ElevatedButton(onPressed: _load, child: const Text('Retry')),
             ],
@@ -374,7 +402,11 @@ class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.only(bottom: 88),
         children: [
-          if (school != null) _PinnedAnnouncementTile(room: school, onTap: () => _openRoom(school)),
+          if (school != null)
+            _PinnedAnnouncementTile(
+              room: school,
+              onTap: () => _openRoom(school),
+            ),
           if (teachers != null)
             _PinnedAnnouncementTile(
               room: teachers,
@@ -394,19 +426,34 @@ class _PortalChatLandingScreenState extends State<PortalChatLandingScreen> {
           if (teacherRecords.isNotEmpty) ...[
             const _SectionHeader(title: 'My Records'),
             ...teacherRecords.map(
-              (room) => TeacherSystemRecordTile(room: room, onTap: () => _openRoom(room)),
+              (room) => TeacherSystemRecordTile(
+                room: room,
+                onTap: () => _openRoom(room),
+              ),
             ),
           ],
           if (communities.isNotEmpty) ...[
             _SectionHeader(title: _classesTitle),
             ...communities.map(
-              (c) => _ClassCommunityRow(community: c, onTap: () => _openClassCommunity(c)),
+              (c) => _ClassCommunityRow(
+                community: c,
+                onTap: () => _openClassCommunity(c),
+              ),
             ),
           ],
-          if (school == null && teachers == null && communities.isEmpty && dmRooms.isEmpty && teacherRecords.isEmpty)
+          if (school == null &&
+              teachers == null &&
+              communities.isEmpty &&
+              dmRooms.isEmpty &&
+              teacherRecords.isEmpty)
             const Padding(
               padding: EdgeInsets.all(48),
-              child: Center(child: Text('No chat rooms yet', style: TextStyle(color: AppColors.textMuted))),
+              child: Center(
+                child: Text(
+                  'No chat rooms yet',
+                  style: TextStyle(color: AppColors.textMuted),
+                ),
+              ),
             ),
         ],
       ),
@@ -466,23 +513,37 @@ class _PinnedAnnouncementTile extends StatelessWidget {
               Expanded(
                 child: Text(
                   room.name,
-                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: AppColors.textPrimary),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                    color: AppColors.textPrimary,
+                  ),
                 ),
               ),
               if (room.unreadCount > 0)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.violet,
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
                     room.unreadCount > 99 ? '99+' : '${room.unreadCount}',
-                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 )
               else
-                const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppColors.textMuted,
+                ),
             ],
           ),
         ),
@@ -499,7 +560,9 @@ class _ClassCommunityRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final groupCount = community.rooms.where((r) => r.kind == 'group_chat').length;
+    final groupCount = community.rooms
+        .where((r) => r.kind == 'group_chat')
+        .length;
     final subtitle = groupCount > 0
         ? '$groupCount subject group${groupCount == 1 ? '' : 's'}'
         : 'Class community';
