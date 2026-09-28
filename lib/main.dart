@@ -1,5 +1,8 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'config/app_config.dart';
 import 'core/theme/app_theme.dart';
@@ -14,6 +17,13 @@ import 'features/home/presentation/role_home_screen.dart';
 
 void main() {
   final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
+  // Desktop (Linux/Windows/macOS) has no sqflite platform plugin — use the
+  // FFI backend, otherwise any DB access throws "databaseFactory not
+  // initialized" and leaves loaders spinning forever.
+  if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  }
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
   runApp(const McsApp());
 }

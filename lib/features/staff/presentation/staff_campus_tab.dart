@@ -1,9 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../../../core/api/api_exception.dart';
+import '../../../core/portal/money_format.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../portal/widgets/portal_panel_scaffold.dart';
 import '../data/staff_api.dart';
@@ -86,9 +86,17 @@ class _StaffCampusTabState extends State<StaffCampusTab> with SingleTickerProvid
     }
   }
 
+  /// Campus fees API returns paise (same as web `formatPkr`); convert to rupees.
   String _money(dynamic value) {
-    final amount = value is num ? value : 0;
-    return NumberFormat.currency(symbol: 'Rs ', decimalDigits: 0).format(amount);
+    final int paise;
+    if (value is int) {
+      paise = value;
+    } else if (value is num) {
+      paise = value.toInt();
+    } else {
+      paise = int.tryParse('$value') ?? 0;
+    }
+    return formatMoneyPaise(paise);
   }
 
   Widget _statCard(String label, String value) {
