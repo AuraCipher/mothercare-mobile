@@ -628,9 +628,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   }
 
   Future<void> _pickDocument() async {
-    final picked = await FilePicker.platform.pickFiles(withReadStream: false);
-    if (picked == null || picked.files.isEmpty) return;
-    final platformFile = picked.files.single;
+    final files = await FilePicker.pickFiles();
+    if (files.isEmpty) return;
+    final platformFile = files.single;
     final path = platformFile.path;
     if (path == null) return;
     final ok = await _guardAttachment(File(path), _maxDocumentBytes);
