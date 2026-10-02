@@ -1,3 +1,6 @@
+// ignore_for_file: prefer_initializing_formals
+// Public named params feed private fields: cross-library callers cannot use
+// private formal names, and several fields need `??` defaults in initializers.
 import 'dart:math';
 
 /// Bounded exponential backoff with jitter. Pure math — unit-testable,
