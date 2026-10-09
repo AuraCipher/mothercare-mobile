@@ -363,9 +363,19 @@ class ChatMessageMedia {
 
   bool get hasContent => id.isNotEmpty && url.isNotEmpty;
   bool get isImage => mimeType.startsWith('image/');
-  bool get isVideo =>
-      purpose != 'voice_note' && (mimeType.startsWith('video/') || purpose == 'video');
-  bool get isAudio => mimeType.startsWith('audio/') || purpose == 'voice_note';
+
+  /// Voice-note identity across upload eras: legacy purpose 'voice_note'
+  /// (audio mime), and purpose 'chat' voice notes — which declare their
+  /// ftyp-derived MIME and can therefore be audio/* (iOS `M4A `) or
+  /// video/mp4 (Android `mp42`, backend's video/mp4 sniff of mp42). Real
+  /// videos always upload under purpose 'video', never 'chat'.
+  bool get isVoiceNote =>
+      purpose == 'voice_note' ||
+      mimeType.startsWith('audio/') ||
+      (purpose == 'chat' && mimeType.startsWith('video/'));
+
+  bool get isVideo => !isVoiceNote && (mimeType.startsWith('video/') || purpose == 'video');
+  bool get isAudio => isVoiceNote;
   bool get isDocument =>
       purpose == 'document' ||
       mimeType == 'application/pdf' ||

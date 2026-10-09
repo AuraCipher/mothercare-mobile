@@ -19,6 +19,9 @@ class ChatComposerBar extends StatefulWidget {
     required this.onCamera,
     required this.onSendText,
     required this.onRecordStart,
+    required this.onRecordMove,
+    required this.onRecordEnd,
+    required this.onRecordPointerCancel,
     required this.onLockedSend,
     required this.onRecordCancel,
   });
@@ -32,7 +35,10 @@ class ChatComposerBar extends StatefulWidget {
   final VoidCallback onAttach;
   final VoidCallback onCamera;
   final VoidCallback onSendText;
-  final Future<void> Function() onRecordStart;
+  final Future<void> Function(LongPressStartDetails details) onRecordStart;
+  final void Function(LongPressMoveUpdateDetails details) onRecordMove;
+  final VoidCallback onRecordEnd;
+  final VoidCallback onRecordPointerCancel;
   final VoidCallback onLockedSend;
   final VoidCallback onRecordCancel;
 
@@ -86,7 +92,30 @@ class _ChatComposerBarState extends State<ChatComposerBar> with SingleTickerProv
               ),
             ],
           ),
-          child: widget.isRecording ? _buildRecordingBar() : _buildIdleBar(),
+          child: Stack(
+            children: [
+              // The idle bar — and with it the mic — stays mounted for the
+              // whole recording session. Flutter caches each pointer's hit
+              // path at PointerDown, so keeping this subtree alive is what
+              // lets the originating finger keep delivering move/end/cancel
+              // events while the recording bar is shown. IgnorePointer only
+              // affects *new* pointers, never the ongoing one.
+              IgnorePointer(
+                ignoring: widget.isRecording,
+                child: _buildIdleBar(),
+              ),
+              if (widget.isRecording)
+                Positioned.fill(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(28),
+                    child: ColoredBox(
+                      color: Colors.white,
+                      child: _buildRecordingBar(),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -135,12 +164,20 @@ class _ChatComposerBarState extends State<ChatComposerBar> with SingleTickerProv
   }
 
   Widget _buildRecordingBar() {
+    // Vertical padding mirrors the idle bar (4 + 40 content + 4 = 48) so the
+    // pill keeps one stable height in both states instead of growing under a
+    // finger that is already held down.
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: Row(
         children: [
           if (widget.isLocked)
-            _iconBtn(icon: Icons.delete_outline_rounded, onTap: widget.onRecordCancel, color: AppColors.error)
+            _iconBtn(
+              icon: Icons.delete_outline_rounded,
+              onTap: widget.onRecordCancel,
+              color: AppColors.error,
+              tooltip: 'Cancel recording',
+            )
           else
             const SizedBox(width: 40),
           Expanded(
@@ -179,6 +216,7 @@ class _ChatComposerBarState extends State<ChatComposerBar> with SingleTickerProv
               icon: Icons.send_rounded,
               onTap: widget.onLockedSend,
               color: AppColors.violet,
+              tooltip: 'Send recording',
             )
           else
             Padding(
@@ -201,20 +239,37 @@ class _ChatComposerBarState extends State<ChatComposerBar> with SingleTickerProv
   }
 
   Widget _micButton() {
-    return GestureDetector(
-      onLongPressStart: widget.enabled && !widget.sending
-          ? (_) {
-              HapticFeedback.mediumImpact();
-              unawaited(widget.onRecordStart());
-            }
-          : null,
-      child: SizedBox(
-        width: 40,
-        height: 40,
-        child: Icon(
-          Icons.mic_none_rounded,
-          size: 22,
-          color: widget.isRecording ? AppColors.violet : AppColors.textPrimary,
+    return Listener(
+      // The long-press recognizer never reports cancellations that arrive
+      // after the press is accepted (onLongPressEnd / onLongPressCancel only
+      // fire from the `possible` state), so this Listener is the reliable
+      // path for system-initiated cancellations. It receives them because the
+      // mic stays mounted for the whole gesture.
+      onPointerCancel: (_) => widget.onRecordPointerCancel(),
+      child: Semantics(
+        label: 'Hold to record a voice message',
+        button: true,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          // All three callbacks stay non-null forever so the recognizer set
+          // never changes mid-press (swapping recognizers during a gesture
+          // silently kills it — the exact failure class being fixed here).
+          onLongPressStart: (details) {
+            if (!widget.enabled || widget.sending) return;
+            HapticFeedback.mediumImpact();
+            unawaited(widget.onRecordStart(details));
+          },
+          onLongPressMoveUpdate: widget.onRecordMove,
+          onLongPressEnd: (_) => widget.onRecordEnd(),
+          child: SizedBox(
+            width: 40,
+            height: 40,
+            child: Icon(
+              Icons.mic_none_rounded,
+              size: 22,
+              color: widget.isRecording ? AppColors.violet : AppColors.textPrimary,
+            ),
+          ),
         ),
       ),
     );
@@ -224,6 +279,7 @@ class _ChatComposerBarState extends State<ChatComposerBar> with SingleTickerProv
     required IconData icon,
     required VoidCallback? onTap,
     Color? color,
+    String? tooltip,
   }) {
     return SizedBox(
       width: 40,
@@ -231,6 +287,7 @@ class _ChatComposerBarState extends State<ChatComposerBar> with SingleTickerProv
       child: IconButton(
         onPressed: onTap,
         padding: EdgeInsets.zero,
+        tooltip: tooltip,
         icon: Icon(icon, size: 22, color: color ?? AppColors.textPrimary),
       ),
     );

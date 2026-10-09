@@ -58,7 +58,8 @@ class ChatRoomScreen extends StatefulWidget {
   State<ChatRoomScreen> createState() => _ChatRoomScreenState();
 }
 
-class _ChatRoomScreenState extends State<ChatRoomScreen> {
+class _ChatRoomScreenState extends State<ChatRoomScreen>
+    with WidgetsBindingObserver {
   final _chatApi = ChatApi();
   final _messageCache = ChatMessageCacheStore.instance;
   final _pendingStore = PendingOutgoingStore.instance;
@@ -78,7 +79,20 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   String? _cursor;
   bool _hasMore = true;
   bool _messagesOffline = false;
-  double _voiceLockDragUp = 0;
+  // Voice gesture state: origin of the held press (for lock/cancel slide
+  // thresholds), whether the mic finger is still down, and whether the
+  // slide-left cancel hint is armed.
+  Offset _recordOrigin = Offset.zero;
+  bool _micHeld = false;
+  bool _cancelArmed = false;
+  // A freshly captured voice note sends itself once its upload settles
+  // (WhatsApp/Instagram-style release-to-send). [_voiceSending] prevents
+  // double dispatch; both are plain bools because all transitions are
+  // synchronous (see _maybeAutoSendVoice).
+  bool _voiceAutoSendPending = false;
+  bool _voiceSending = false;
+  static const double _lockDragUp = 72;
+  static const double _cancelDragLeft = 96;
   late final String _userId;
   StreamSubscription<ChatMessage>? _messageSub;
   StreamSubscription<String>? _deletedSub;
@@ -88,8 +102,15 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _userId = widget.session.payload.id;
-    _voiceRecorder.onTick = (_) {
+    _voiceRecorder.onTick = (elapsed) {
+      // Recording ceiling: the backend rejects >10 min via ffprobe, so cut
+      // off and send what exists at the limit instead of failing on upload.
+      if (elapsed >= VoiceNoteRecorder.maxDuration &&
+          _voiceRecorder.phase != VoiceRecorderPhase.idle) {
+        unawaited(_finishVoiceRecording(send: !_cancelArmed));
+      }
       if (mounted) setState(() {});
     };
     widget.socket.joinRoom(widget.room.id);
@@ -153,6 +174,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       academicYearId: ayId,
     );
     _queue = queue;
+    queue.addListener(_onAttachmentQueueChanged);
     try {
       await queue.recover();
     } catch (_) {}
@@ -160,7 +182,21 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused &&
+        _voiceRecorder.phase == VoiceRecorderPhase.recording) {
+      // Backgrounded mid-hold: the finger is gone and the system may drop
+      // the gesture — discard rather than auto-send an interrupted
+      // recording. Locked recordings keep running hands-free by design.
+      _micHeld = false;
+      unawaited(_finishVoiceRecording(send: false));
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _queue?.removeListener(_onAttachmentQueueChanged);
     _queue?.dispose();
     _queue = null;
     _textQueue?.removeListener(_onTextQueueChanged);
@@ -415,18 +451,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     if (queue == null) return;
     final caption = _composer.text.trim();
     if (caption.isNotEmpty) _composer.clear();
+    _voiceAutoSendPending = false; // manual send consumes the tray
     try {
-      final message = await queue.send(
-        caption: caption.isEmpty ? null : caption,
-      );
-      if (!mounted) return;
-      setState(() {
-        if (!_messages.any((m) => m.id == message.id)) {
-          _messages.add(message);
-        }
-      });
-      await _persistMessages();
-      _scrollToBottom();
+      await _sendMessageFromQueue(caption.isEmpty ? null : caption);
     } on AttachmentLimitException catch (e) {
       _showError(e.message);
     } on StateError catch (e) {
@@ -436,6 +463,68 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       // in the tray for explicit retry (same clientMessageId).
       _showError(e.toString());
       if (caption.isNotEmpty) _composer.text = caption;
+    }
+  }
+
+  /// Shared send body for the manual tray button and voice auto-send:
+  /// creates the message, dedupes echoes, persists, scrolls. Throws the
+  /// queue's typed errors to the caller for presentation.
+  Future<void> _sendMessageFromQueue(String? caption) async {
+    final queue = _queue;
+    if (queue == null) return;
+    final message = await queue.send(caption: caption);
+    if (!mounted) return;
+    setState(() {
+      if (!_messages.any((m) => m.id == message.id)) {
+        _messages.add(message);
+      }
+    });
+    await _persistMessages();
+    _scrollToBottom();
+  }
+
+  /// Queue listener driving release-to-auto-send. Deliberately does NOT
+  /// call setState: the tray and the message list render their own
+  /// listenables, and chunk progress must never rebuild the room (§28).
+  void _onAttachmentQueueChanged() {
+    if (!mounted) return;
+    if (!_voiceAutoSendPending) return;
+    if (_queue?.isEmpty ?? true) {
+      _voiceAutoSendPending = false; // item removed manually
+      return;
+    }
+    _maybeAutoSendVoice();
+  }
+
+  /// WhatsApp/Instagram rule: a voice-only tray of exactly one item sends
+  /// itself the moment its upload settles. Mixed or multi-item trays keep
+  /// the existing manual Send button (§6/§16); the flag is cleared BEFORE
+  /// dispatch so a failed send can never loop through this listener.
+  void _maybeAutoSendVoice() {
+    if (!_voiceAutoSendPending || _voiceSending) return;
+    final queue = _queue;
+    if (queue == null || !queue.canSend) return;
+    final tray = queue.tray;
+    if (tray.length != 1 || tray.single.item.kind != 'voice') return;
+    _voiceAutoSendPending = false;
+    _voiceSending = true;
+    unawaited(_sendAutoVoice());
+  }
+
+  /// Auto-send path: no composer caption is consumed (voice notes never
+  /// carry one). Failures stay in the tray as pendingSend=failed with the
+  /// existing Retry affordance, same as a manual send failure.
+  Future<void> _sendAutoVoice() async {
+    try {
+      await _sendMessageFromQueue(null);
+    } on AttachmentLimitException catch (e) {
+      _showError(e.message);
+    } on StateError catch (e) {
+      _showError(e.message);
+    } catch (e) {
+      _showError(e.toString());
+    } finally {
+      _voiceSending = false;
     }
   }
 
@@ -452,9 +541,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   }
 
   static const int _maxDocumentBytes = 20 * 1024 * 1024; // 20 MB
-  // M5: no MB product cap for voice (duration ≤10 min is authoritative,
-  // server-probed). 1 GiB is the shared infrastructure object ceiling.
-  static const int _maxVoiceBytes = 1024 * 1024 * 1024;
+  // Voice uploads under purpose 'chat', whose server-side ceiling is 20 MB
+  // (getMaxBytesForPurpose('chat')). 10 min @ 96 kbps ≈ 7.2 MB, so the
+  // duration cap still binds first; this only fails fast on absurd files.
+  static const int _maxVoiceBytes = 20 * 1024 * 1024; // 20 MB
   static const int _maxVideoBytes = 1024 * 1024 * 1024; // 1 GiB
 
   /// Guards shared by every picker: room context + per-file size caps.
@@ -573,36 +663,78 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     }
   }
 
-  Future<void> _startVoiceRecording() async {
+  Future<void> _startVoiceRecording(LongPressStartDetails details) async {
+    if (_voiceRecorder.phase != VoiceRecorderPhase.idle) return;
+    _micHeld = true;
+    _cancelArmed = false;
+    _recordOrigin = details.globalPosition;
+    // Drop the keyboard so the composer keeps one stable height for the
+    // whole gesture (the text field stays mounted under the overlay).
+    FocusScope.of(context).unfocus();
     final ok = await _voiceRecorder.start();
     if (!ok) {
+      _micHeld = false;
       _showError('Microphone permission is required for voice notes');
       return;
     }
-    _voiceLockDragUp = 0;
+    if (!_micHeld) {
+      // The press ended (or was system-cancelled) while the permission
+      // dialog was open — discard instead of leaving an orphan recording.
+      await _voiceRecorder.cancel();
+      if (mounted) setState(() {});
+      return;
+    }
     if (mounted) setState(() {});
   }
 
-  void _onVoicePointerMove(PointerMoveEvent event) {
+  void _onRecordMove(LongPressMoveUpdateDetails details) {
     if (_voiceRecorder.phase != VoiceRecorderPhase.recording) return;
-    _voiceLockDragUp -= event.delta.dy;
-    if (_voiceLockDragUp > 72) {
+    final pos = details.globalPosition;
+    // Slide up → lock (hands-free); slide left past the threshold arms the
+    // cancel hint shown in the banner.
+    if (_recordOrigin.dy - pos.dy > _lockDragUp) {
       _voiceRecorder.lock();
+      _cancelArmed = false;
       HapticFeedback.lightImpact();
-      _voiceLockDragUp = 0;
       if (mounted) setState(() {});
+      return;
+    }
+    final armed = pos.dx - _recordOrigin.dx <= -_cancelDragLeft;
+    if (armed != _cancelArmed && mounted) {
+      setState(() => _cancelArmed = armed);
     }
   }
 
-  Future<void> _onVoicePointerUp() async {
+  void _onRecordEnd() {
+    _micHeld = false;
+    final wasArmed = _cancelArmed;
+    _cancelArmed = false;
     if (_voiceRecorder.phase == VoiceRecorderPhase.recording) {
-      await _finishVoiceRecording(send: true);
+      // Normal release sends; release with the cancel hint armed discards.
+      // Locked recordings ignore the lift entirely (hands-free continues).
+      unawaited(_finishVoiceRecording(send: !wasArmed));
     }
-    _voiceLockDragUp = 0;
+    if (mounted) setState(() {});
+  }
+
+  void _onRecordPointerCancel() {
+    _micHeld = false;
+    final phase = _voiceRecorder.phase;
+    if (phase == VoiceRecorderPhase.recording) {
+      // System-cancelled press (gesture arena loss, keyboard shift, app
+      // switch mid-press…) — NEVER send a recording the user did not
+      // release normally. The recognizer itself stays silent for cancels
+      // after the press is accepted, so this Listener is the only signal.
+      _cancelArmed = false;
+      unawaited(_finishVoiceRecording(send: false));
+    }
+    // Locked: the finger already lifted implicitly; recording continues.
+    if (mounted) setState(() {});
   }
 
   Future<void> _finishVoiceRecording({required bool send}) async {
     if (_voiceRecorder.phase == VoiceRecorderPhase.idle) return;
+    _cancelArmed = false;
     if (!send) {
       await _voiceRecorder.cancel();
       if (mounted) setState(() {});
@@ -613,7 +745,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     if (mounted) setState(() {});
     if (file == null) return;
     final ok = await _guardAttachment(file, _maxVoiceBytes);
-    if (ok == null || _queue == null) return;
+    if (ok == null || _queue == null) {
+      await _deleteTempVoice(file);
+      return;
+    }
     try {
       await _queue!.attachVoice(
         file: ok,
@@ -622,9 +757,23 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             .toDouble(),
       );
       _scrollToBottom();
+      _voiceAutoSendPending = true;
+      _maybeAutoSendVoice();
     } catch (_) {
       _showError('Could not add voice message');
+    } finally {
+      // Staging copied the recording into the managed staging dir (the
+      // staged copy is what gets uploaded and later deleted on send) —
+      // the raw temp file is no longer ours to keep. Fixes the leak where
+      // recordings were never removed from the temp directory.
+      await _deleteTempVoice(file);
     }
+  }
+
+  Future<void> _deleteTempVoice(File file) async {
+    try {
+      if (await file.exists()) await file.delete();
+    } catch (_) {}
   }
 
   Future<void> _pickDocument() async {
@@ -908,7 +1057,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                     child: Text(
                       _voiceRecorder.phase == VoiceRecorderPhase.locked
                           ? 'Recording locked — tap send or delete'
-                          : 'Recording… release to send',
+                          : _cancelArmed
+                              ? 'Release to cancel'
+                              : 'Recording… release to send · slide left to cancel',
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         fontSize: 11,
@@ -939,14 +1090,12 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
               ],
             ),
             if (_voiceRecorder.phase == VoiceRecorderPhase.recording)
-              Positioned.fill(
-                child: Listener(
-                  behavior: HitTestBehavior.translucent,
-                  onPointerMove: _onVoicePointerMove,
-                  onPointerUp: (_) => _onVoicePointerUp(),
-                  onPointerCancel: (_) => _onVoicePointerUp(),
-                ),
-              ),
+              // Blocks every NEW pointer while a finger is held on the mic
+              // (otherwise taps land on the composer/list under the
+              // overlay). The held finger itself is unaffected: its hit
+              // path was cached at PointerDown, which is also what keeps
+              // its move/end/cancel events flowing to the mic subtree.
+              const Positioned.fill(child: AbsorbPointer()),
           ],
         ),
       ),
@@ -1048,6 +1197,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           onCamera: () => _pickPhoto(ImageSource.camera),
           onSendText: _sendText,
           onRecordStart: _startVoiceRecording,
+          onRecordMove: _onRecordMove,
+          onRecordEnd: _onRecordEnd,
+          onRecordPointerCancel: _onRecordPointerCancel,
           onLockedSend: () => _finishVoiceRecording(send: true),
           onRecordCancel: () => _finishVoiceRecording(send: false),
         ),
@@ -1137,7 +1289,8 @@ class _MessageBubble extends StatelessWidget {
                   )
                 else if (message.type == 'voice_note' ||
                     message.type == 'audio' ||
-                    message.mediaFile?.isAudio == true)
+                    (message.mediaFile?.isAudio == true &&
+                        message.type != 'video'))
                   mediaUrl.isNotEmpty
                       ? ChatVoiceBubble(
                           url: mediaUrl,

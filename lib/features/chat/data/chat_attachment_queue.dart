@@ -14,6 +14,7 @@ import '../../uploads/upload_task.dart';
 import '../../uploads/upload_task_store.dart';
 import '../../../core/api/api_exception.dart';
 import '../models/chat_models.dart';
+import '../utils/voice_mime.dart';
 import 'chat_api.dart';
 import 'chat_file_api.dart';
 import 'chat_socket_service.dart';
@@ -68,6 +69,13 @@ class PendingSend {
   String? error;
   bool uncertain;
 }
+
+/// Voice identity survives the purpose switch: legacy tasks carry purpose
+/// 'voice_note'; new ones upload under purpose 'chat' (the only purpose the
+/// backend authorizes for room members — upload-authorization branch 5) and
+/// are identified by their persisted scope kind.
+bool isVoiceUploadTask(UploadTask task) =>
+    task.purpose == 'voice_note' || task.scope['kind'] == 'voice';
 
 /// Per-room chat attachment controller. Owns selection → M3 tasks → tray
 /// state → socket send. Never uploads bytes itself (M3 owns that); never
@@ -250,11 +258,19 @@ class ChatAttachmentQueue extends ChangeNotifier {
     required String fileName,
     required double durationSeconds,
   }) async {
+    // Purpose 'chat' (not 'voice_note'): only purpose 'chat' + scope.roomId
+    // grants room members read access to the stored file — without it the
+    // recipient's bubble gets a 404 on playback (backend authorization has
+    // no voice_note branch). The declared MIME is read from the file's ftyp
+    // brand because purpose 'chat' requires declared top == sniffed top
+    // (voice_note's voiceOk coercion does not apply). 10-minute duration is
+    // enforced client-side (VoiceNoteRecorder.maxDuration) since purpose
+    // 'chat' skips server media processing/probing.
     return _stageAndEnqueue(
       source: file,
       fileName: fileName,
-      mimeType: 'audio/mp4',
-      purpose: 'voice_note',
+      mimeType: await voiceDeclaredMimeType(file),
+      purpose: 'chat',
       kind: 'voice',
       metadata: {'durationSeconds': durationSeconds},
     );
@@ -710,8 +726,8 @@ class ChatAttachmentQueue extends ChangeNotifier {
   }
 
   String _kindFor(UploadTask task) {
+    if (isVoiceUploadTask(task)) return 'voice';
     if (task.purpose == 'video') return 'video';
-    if (task.purpose == 'voice_note') return 'voice';
     final mime = task.mimeType;
     if (mime.startsWith('image/')) return 'image';
     if (mime.startsWith('video/')) return 'video';
@@ -722,8 +738,8 @@ class ChatAttachmentQueue extends ChangeNotifier {
   String _messageTypeFor(List<UploadTask> ready) {
     if (ready.length == 1) {
       final t = ready.single;
+      if (isVoiceUploadTask(t)) return 'voice_note';
       if (t.purpose == 'video') return 'video';
-      if (t.purpose == 'voice_note') return 'voice_note';
       if (t.mimeType.startsWith('image/')) return 'image';
       return 'document';
     }
