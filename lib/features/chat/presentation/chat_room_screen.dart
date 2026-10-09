@@ -25,7 +25,7 @@ import '../../../core/widgets/universal_header.dart';
 import '../models/chat_models.dart';
 import '../widgets/chat_attachment_tray.dart';
 import '../widgets/chat_document_bubble.dart';
-import '../widgets/chat_image_bubble.dart';
+import '../widgets/chat_image_grid.dart';
 import '../widgets/chat_video_bubble.dart';
 import '../widgets/chat_voice_bubble.dart';
 import '../data/chat_media_download.dart';
@@ -885,12 +885,24 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
   String _mediaUrl(ChatMessage message) =>
       resolveChatMediaUrl(message.mediaFile);
 
-  Future<void> _openImageViewer(String url) async {
+  /// Image URLs of a message in display order (images only — the viewer
+  /// swipes through these, even for mixed-attachment messages).
+  List<String> _imageUrls(ChatMessage message) => [
+        for (final media in message.displayAttachments)
+          if (media.isImage) resolveChatMediaUrl(media),
+      ].where((url) => url.isNotEmpty).toList();
+
+  Future<void> _openImageViewer(ChatMessage message, int initialIndex) async {
+    final urls = _imageUrls(message);
+    if (urls.isEmpty) return;
     await Navigator.of(context).push(
       MaterialPageRoute(
         fullscreenDialog: true,
-        builder: (_) =>
-            ChatImageViewerScreen(url: url, authToken: widget.session.token),
+        builder: (_) => ChatImageViewerScreen(
+          urls: urls,
+          initialIndex: initialIndex.clamp(0, urls.length - 1),
+          authToken: widget.session.token,
+        ),
       ),
     );
   }
@@ -903,12 +915,27 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
     );
     if (actions.isEmpty) return;
 
-    final action = await showChatMessageActionsSheet(context, actions: actions);
+    final action = await showChatMessageActionsSheet(
+      context,
+      actions: actions,
+      message: message,
+    );
     if (!mounted || action == null) return;
 
     switch (action) {
       case ChatMessageAction.save:
+      case ChatMessageAction.saveAll:
         await _saveMessageMedia(message);
+      case ChatMessageAction.saveSelected:
+      case ChatMessageAction.saveSingle:
+        final indices = await showSaveSelectionSheet(
+          context,
+          medias: message.displayAttachments,
+          authToken: widget.session.token,
+          allowMultiple: action == ChatMessageAction.saveSelected,
+        );
+        if (!mounted || indices == null || indices.isEmpty) return;
+        await _saveMessageMedia(message, indices: indices);
       case ChatMessageAction.edit:
         await _editMessage(message);
       case ChatMessageAction.delete:
@@ -916,30 +943,78 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
     }
   }
 
-  Future<void> _saveMessageMedia(ChatMessage message) async {
-    final url = _mediaUrl(message);
-    if (url.isEmpty) {
+  Future<void> _saveMessageMedia(ChatMessage message, {List<int>? indices}) async {
+    final all = message.displayAttachments;
+    final chosen = indices == null
+        ? all
+        : [for (final i in indices) if (i >= 0 && i < all.length) all[i]];
+    final targets = [
+      for (final media in chosen)
+        if (resolveChatMediaUrl(media).isNotEmpty) media,
+    ];
+    if (targets.isEmpty) {
       _showError('No media to save');
       return;
     }
+    final urls = [for (final media in targets) resolveChatMediaUrl(media)];
+
+    // Progress dialog for larger batches; captured navigator so the dialog
+    // is always closed exactly once.
+    NavigatorState? dialogNav;
+    if (targets.length > 2) {
+      dialogNav = Navigator.of(context, rootNavigator: true);
+      unawaited(showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const _SaveProgressDialog(),
+      ));
+    }
+
+    ChatMediaSaveReport? report;
     try {
-      final result = await downloadChatMedia(
-        url: url,
+      report = await saveChatMediaUrls(
+        urls: urls,
         authToken: widget.session.token,
         message: message,
       );
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Saved ${result.fileName}')));
-      if (message.isDocumentMessage) {
-        await openDownloadedMedia(result);
-      }
     } on ApiException catch (e) {
-      _showError(e.message);
+      report = null;
+      if (mounted) _showError(e.message);
     } catch (_) {
-      _showError('Could not save media');
+      report = null;
+    } finally {
+      try {
+        dialogNav?.pop();
+      } catch (_) {/* dialog already gone */}
     }
+
+    if (!mounted) return;
+    if (report == null) {
+      _showError('Could not save media');
+      return;
+    }
+
+    // Preserve the legacy convenience: a single saved document opens itself.
+    if (report.savedCount == 1 &&
+        !report.saved.first.isPublic &&
+        message.isDocumentMessage) {
+      await openDownloadedMedia(report.saved.first);
+    }
+    if (!mounted) return;
+
+    final String text;
+    if (urls.length == 1 && report.savedCount == 1) {
+      final saved = report.saved.first;
+      text = 'Saved ${saved.fileName}${saved.isPublic ? ' to Gallery' : ''}';
+    } else if (report.allSaved) {
+      text = 'Saved ${report.savedCount} files';
+    } else {
+      text = 'Saved ${report.savedCount} of ${urls.length}'
+          '${report.failedCount > 0 ? ' — ${report.failedCount} failed' : ''}';
+    }
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(text)));
   }
 
   Future<void> _deleteMessage(ChatMessage message) async {
@@ -1171,7 +1246,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen>
           canPost: widget.room.canPost,
           onLongPress: () => _handleMessageLongPress(message, isMine),
           onImageTap: message.isImageMessage
-              ? () => _openImageViewer(_mediaUrl(message))
+              ? (index) => _openImageViewer(message, index)
               : null,
         );
       },
@@ -1225,7 +1300,7 @@ class _MessageBubble extends StatelessWidget {
   final String authToken;
   final bool canPost;
   final VoidCallback? onLongPress;
-  final VoidCallback? onImageTap;
+  final ValueChanged<int>? onImageTap;
 
   @override
   Widget build(BuildContext context) {
@@ -1233,12 +1308,17 @@ class _MessageBubble extends StatelessWidget {
     final align = isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start;
     final bg = isMine ? AppColors.violet : AppColors.surface;
     final fg = isMine ? Colors.white : AppColors.textPrimary;
-    final multi = message.displayAttachments.length > 1 && !message.isDeleted;
+    final attachments = message.displayAttachments;
+    final imageUrls = [
+      for (final media in attachments)
+        if (media.isImage) resolveChatMediaUrl(media),
+    ].where((url) => url.isNotEmpty).toList();
+    final hasNonImage = attachments.any((media) => !media.isImage);
+    final multi = attachments.length > 1 && !message.isDeleted;
+    // All-image messages (single photo or WhatsApp-style group) render
+    // edge-to-edge inside the bubble, like one photo.
     final isImage =
-        !multi &&
-        message.isImageMessage &&
-        mediaUrl.isNotEmpty &&
-        !message.isDeleted;
+        !message.isDeleted && imageUrls.isNotEmpty && !hasNonImage;
     final showCaption = message.isImageMessage && message.hasCaption;
 
     final bubble = Padding(
@@ -1279,14 +1359,14 @@ class _MessageBubble extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (multi)
-                  ..._multiAttachmentWidgets(message, fg, isMine)
-                else if (isImage)
-                  ChatImageBubble(
-                    url: mediaUrl,
+                if (isImage)
+                  ChatImageGridBubble(
+                    urls: imageUrls,
                     authToken: authToken,
-                    onTap: onImageTap,
+                    onTapIndex: onImageTap,
                   )
+                else if (multi)
+                  ..._multiAttachmentWidgets(message, imageUrls, fg, isMine)
                 else if (message.type == 'voice_note' ||
                     message.type == 'audio' ||
                     (message.mediaFile?.isAudio == true &&
@@ -1358,7 +1438,12 @@ class _MessageBubble extends StatelessWidget {
                   ),
                 if (multi && message.hasCaption)
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(0, 6, 0, 0),
+                    padding: EdgeInsets.fromLTRB(
+                      isImage ? 10 : 0,
+                      6,
+                      isImage ? 10 : 0,
+                      0,
+                    ),
                     child: Text(
                       message.content!.trim(),
                       style: TextStyle(color: fg, fontSize: 15, height: 1.35),
@@ -1394,29 +1479,32 @@ class _MessageBubble extends StatelessWidget {
     );
   }
 
-  /// Renders every attachment in selection order, reusing the existing
-  /// single-media bubble widgets (no new rendering stack).
+  /// Mixed-attachment messages: image group first (WhatsApp grid), then the
+  /// non-image attachments stacked below, reusing the single-media widgets.
   List<Widget> _multiAttachmentWidgets(
     ChatMessage message,
+    List<String> imageUrls,
     Color fg,
     bool isMine,
   ) {
     final widgets = <Widget>[];
+    if (imageUrls.isNotEmpty) {
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: ChatImageGridBubble(
+            urls: imageUrls,
+            authToken: authToken,
+            onTapIndex: onImageTap,
+          ),
+        ),
+      );
+    }
     for (final media in message.displayAttachments) {
+      if (media.isImage) continue;
       final url = resolveChatMediaUrl(media);
       if (url.isEmpty) continue;
-      if (media.isImage) {
-        widgets.add(
-          Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: ChatImageBubble(
-              url: url,
-              authToken: authToken,
-              onTap: onImageTap,
-            ),
-          ),
-        );
-      } else if (media.isAudio) {
+      if (media.isAudio) {
         widgets.add(
           Padding(
             padding: const EdgeInsets.only(bottom: 6),
@@ -1456,6 +1544,31 @@ class _MessageBubble extends StatelessWidget {
       }
     }
     return widgets;
+  }
+}
+
+/// Modal progress card shown while a multi-file save runs.
+class _SaveProgressDialog extends StatelessWidget {
+  const _SaveProgressDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Card(
+        color: Color(0xFF2A2A2A),
+        child: Padding(
+          padding: EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: AppColors.violet),
+              SizedBox(height: 14),
+              Text('Saving…', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

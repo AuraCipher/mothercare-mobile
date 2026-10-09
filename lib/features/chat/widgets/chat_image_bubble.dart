@@ -13,12 +13,16 @@ class ChatImageBubble extends StatefulWidget {
     required this.url,
     required this.authToken,
     this.width = 240,
+    this.height,
+    this.fit = BoxFit.cover,
     this.onTap,
   });
 
   final String url;
   final String authToken;
   final double width;
+  final double? height;
+  final BoxFit fit;
   final VoidCallback? onTap;
 
   @override
@@ -82,9 +86,10 @@ class _ChatImageBubbleState extends State<ChatImageBubble> {
   Widget build(BuildContext context) {
     final child = SizedBox(
       width: widget.width,
+      height: widget.height,
       child: _loading
           ? SizedBox(
-              height: widget.width * 0.75,
+              height: widget.height ?? widget.width * 0.75,
               child: const Center(
                 child: SizedBox(
                   width: 22,
@@ -95,7 +100,7 @@ class _ChatImageBubbleState extends State<ChatImageBubble> {
             )
           : _failed || _bytes == null
               ? SizedBox(
-                  height: widget.width * 0.5,
+                  height: widget.height ?? widget.width * 0.5,
                   child: Center(
                     child: Icon(Icons.broken_image_outlined, color: Colors.grey.shade400, size: 36),
                   ),
@@ -103,7 +108,8 @@ class _ChatImageBubbleState extends State<ChatImageBubble> {
               : Image.memory(
                   _bytes!,
                   width: widget.width,
-                  fit: BoxFit.cover,
+                  height: widget.height,
+                  fit: widget.fit,
                   gaplessPlayback: true,
                 ),
     );
